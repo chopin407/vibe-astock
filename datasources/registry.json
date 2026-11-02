@@ -4478,6 +4478,36 @@
       },
       "cache_max_age_sec": 21600,
       "notes": "免 key 的 CSV 下载(不用要 key 的 API);只收单位核对过的 12 个系列(另有 GDP / M2SL / INDPRO / ICSA / T10Y2Y),版权受限的系列不收;默认取近 10 年;全序列存为提取 CSV,环比同比交给 calc"
+    },
+    {
+      "market": [
+        "CN",
+        "US",
+        "HK"
+      ],
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "mapper_module": "mappers_cn",
+      "id": "tdx_lan_quotes",
+      "title": "局域网 TDX 批量行情",
+      "layer": "1 行情",
+      "source": "tdx-lan",
+      "module": "tdx_lan",
+      "function": "quotes",
+      "mapper": "tencent_quotes_map",
+      "endpoint_label": "/quote",
+      "args": {
+        "codes": [
+          "sh000001",
+          "sh000300",
+          "sz399001",
+          "sz399006"
+        ]
+      },
+      "cache_max_age_sec": 15
     }
   ]
 }

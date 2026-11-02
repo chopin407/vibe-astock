@@ -74,7 +74,9 @@ def main() -> None:
     args = p.parse_args()
     digits, market = parse_symbol_or_exit(args.symbol, SCRIPT, args.out_dir)
     res = result_skeleton(SCRIPT, digits, market)
-    for name, fn in (("tencent", src_tencent), ("eastmoney", src_eastmoney)):
+    from sources.tdx_lan import kline as src_tdx, settings as tdx_settings
+    sources = (("tdx-lan", src_tdx),) if tdx_settings()["base_url"] else ()
+    for name, fn in sources + (("tencent", src_tencent), ("eastmoney", src_eastmoney)):
         try:
             rows, raw, src, ep = fn(digits, market, args.out_dir, args.bars, args.timeout, res)
             good, bad = validate(rows)
@@ -98,7 +100,7 @@ def main() -> None:
             res["extra"].update({"start": good[0][0], "end": last[0], "bars": len(good), "raw_rows_total": len(rows),
                                  "dropped_rows": len(bad)})
             res["primary_source"] = name
-            res["status"] = "ok" if (name == "tencent" and not bad) else "partial"
+            res["status"] = "ok" if (name == ("tdx-lan" if sources else "tencent") and not bad and not res["errors"]) else "partial"
             res["used_sources"].append(name)
             break
         except Exception as e:  # noqa: BLE001

@@ -721,3 +721,23 @@ npm run build --prefix desktop
 Apache-2.0，详见 [LICENSE](LICENSE)。v2.0.0 起的底座来自同一作者的 [Vibe Research](https://github.com/simonlin1212/Vibe-Research)（MIT），原许可声明见 [NOTICE](NOTICE)。
 
 **作者：** Simon 林 · X [@linsizhen](https://x.com/linsizhen) · 邮箱：[simonlin0423@gmail.com](mailto:simonlin0423@gmail.com)
+
+
+## 局域网 TDX 数据与复盘提速
+
+接口参照 TDX 项目 `extend/httpserver/README.md`，使用 `/quote` 和 `/kline/day/qfq`。在项目 `.local/tdx.json` 中保存配置（该目录不纳入 Git）：
+
+```json
+{
+  "base_url": "http://<局域网服务器>:8081",
+  "token": ""
+}
+```
+
+`token` 仅在服务启用 Bearer 认证时填写原始令牌（不含 `Bearer ` 前缀），请求自动添加 `Authorization: Bearer <token>`。前复权接口会先拉取完整历史再计算、分页，读取超时至少为 60 秒。保存后正常运行 `scripts\start.cmd` 即可，无须设置环境变量；直接运行 Python 取数脚本也读取同一文件。`base_url` 留空可停用 TDX。已有的 `VRA_TDX_BASE_URL`、`VRA_TDX_TOKEN` 环境变量仍可覆盖对应配置项。配置文件定位于项目目录，不受启动时工作目录影响。
+
+- `tdx_lan_quotes`：新增批量行情端点，使用 `/quote`，支持显式 sh/sz/bj 前缀；默认四个 A 股指数。通过原有 `fetch_endpoint.py` 或本机数据 API 调用，来源标记 `tdx-lan`。缺失的名称、估值、换手率和交易所报价时间均保留缺口，因此可能返回 partial；TDX 服务响应时间不作为真实报价时间。
+- `fetch_kline`：配置后优先 `/kline/day/qfq`，失败回退腾讯、东财；未配置保持原路径。一次最多 800 根。传输原文和用于既有计算库的提取序列分别留档。
+- 情绪复盘、每日复盘共用的东财涨停、炸板、跌停及昨日涨停池，成功且非空的响应跨进程共享 60 秒；同请求合并，减少重复网络请求及东财限流排队。日期、排序、分页等参数分别缓存，空池和失败不缓存，原有日期校验与限流保留。每次消费仍留存响应原文。`VRA_REVIEW_CACHE=0` 可禁用；缓存目录为系统临时目录下 `vra-review-http`。60 秒内上游修订可能暂未反映。
+
+TDX 不提供这里所需的完整历史涨停池，情绪计算继续使用东财池，避免用当前报价替代历史复盘。上述优化针对取数阶段，模型生成速度仍取决于所选模型。

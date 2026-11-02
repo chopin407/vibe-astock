@@ -184,7 +184,7 @@ def _em_serial(fn):
             _unlock_em_file(lf)
 
 
-def em_get(url: str, params: Optional[dict] = None, headers: Optional[dict] = None, timeout: int = 15):
+def _em_get_uncached(url: str, params: Optional[dict] = None, headers: Optional[dict] = None, timeout: int = 15):
     """东财统一入口:跨进程串行(锁覆盖整个请求)+ 会话复用 + UA/Referer;403 不重试。
     先按系统代理设置请求,遇连接类错误再直连重试一次(东财单域经代理常断连);每次重试同样排队。"""
     import requests
@@ -193,6 +193,55 @@ def em_get(url: str, params: Optional[dict] = None, headers: Optional[dict] = No
         return _em_serial(lambda: _em_session(True).get(url, params=params, headers=headers, timeout=timeout))
     except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError):
         return _em_serial(lambda: _em_session(False).get(url, params=params, headers=headers, timeout=timeout))
+
+
+def _em_get_review_cached(url: str, params: Optional[dict] = None, headers: Optional[dict] = None, timeout: int = 15):
+    """Share successful limit-pool responses for 60 seconds across review workers.
+
+    Per-key locking coalesces identical requests before the global EM rate limiter.
+    Failures and empty pools are never cached. Callers still archive response bytes.
+    VRA_REVIEW_CACHE=0 bypasses this optimization.
+    """
+    if not url.startswith(("https://push2ex.eastmoney.com/getTopic", "https://push2ex.eastmoney.com/getYesterdayZTPool")) or os.environ.get("VRA_REVIEW_CACHE") == "0":
+        return _em_get_uncached(url, params, headers, timeout)
+    import requests
+    key = hashlib.sha256(json.dumps([url, params, headers], sort_keys=True).encode()).hexdigest()
+    folder = os.path.join(tempfile.gettempdir(), "vra-review-http")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, key + ".json")
+    with open(path + ".lock", "a+") as lock:
+        _lock_em_file(lock)
+        try:
+            try:
+                with open(path, encoding="utf-8") as cached_file:
+                    cached = json.load(cached_file)
+                if 0 <= time.time() - cached["at"] < 60:
+                    response = requests.Response()
+                    response.status_code = 200
+                    response._content = cached["body"].encode("utf-8")
+                    response.encoding = "utf-8"
+                    response.url = cached["url"]
+                    return response
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+            response = _em_get_uncached(url, params, headers, timeout)
+            try:
+                data = response.json()
+                if response.status_code == 200 and data.get("rc", 0) == 0 and (data.get("data") or {}).get("pool"):
+                    atomic_write_json(path, {"at": time.time(), "body": response.content.decode("utf-8"), "url": response.url})
+            except (ValueError, AttributeError, UnicodeError):
+                pass
+            return response
+        finally:
+            _unlock_em_file(lock)
+
+
+def em_get(url: str, params: Optional[dict] = None, headers: Optional[dict] = None, timeout: int = 15):
+    try:
+        return _em_get_review_cached(url, params, headers, timeout)
+    except OSError:
+        # An unwritable cache must never prevent normal data access.
+        return _em_get_uncached(url, params, headers, timeout)
 
 
 def em_multi_host(hosts: tuple, path: str, params: Optional[dict] = None, timeout: int = 15):
