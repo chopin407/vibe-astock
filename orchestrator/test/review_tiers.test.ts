@@ -244,7 +244,8 @@ test("过去的日子:缓存是那天收盘前(或更早)取的,池还没定,要
   } finally { cleanup(ctx); }
 });
 
-test("过去的日子:缓存是那天北京时间 15:05 以后取的照用,之前取的重取", async () => {
+test("过去的日子:缓存是那天北京时间 15:05 以后取的照用,之前取的重取", async (t) => {
+  t.mock.method(Date, "now", () => Date.parse("2030-01-10T08:00:00Z"));
   const ctx = fakeCtx();
   try {
     const D = "2030-01-09";

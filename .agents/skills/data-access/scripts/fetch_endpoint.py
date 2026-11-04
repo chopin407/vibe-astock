@@ -20,6 +20,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from common import atomic_write_json, finish, lib_versions, norm_ticker, now_iso, record_error, redact_text, result_skeleton  # noqa: E402
 from sources._http import DataNotAvailable, assert_us_ticker, capture, norm_hk  # noqa: E402
+from data_service import diagnostics
 from core.stdio_utf8 import force_utf8_stdio
 
 REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
@@ -124,7 +125,7 @@ def main() -> None:
     ctx: dict[str, Any] = {"script": ep["id"], "symbol": symbol, "market": market, "source": ep.get("source", mod_name),
                            "endpoint": ep.get("endpoint_label", fn_name), "as_of": None, "timeout": a.timeout, "ep": ep, "args": extra_args}
     try:
-        with capture(a.out_dir, ctx["source"], ctx["endpoint"]) as cap:
+        with diagnostics() as attempts, capture(a.out_dir, ctx["source"], ctx["endpoint"]) as cap:
             call_args = dict(extra_args)
             if ep.get("symbol_kind", "cn6") != "none":
                 call_args[ep.get("symbol_param", "code")] = symbol
@@ -145,7 +146,8 @@ def main() -> None:
         res["extra"].update(mapped.get("extra", {}))
         res["missing"].extend(mapped.get("missing", []))
         res["primary_source"] = ctx["source"]
-        res["used_sources"].append(ctx["source"])
+        actual_sources = list(dict.fromkeys(e.get("source") for e in res["evidence"] if e.get("source")))
+        res["used_sources"].extend(actual_sources or [ctx["source"]])
         status = mapped.get("status")
         if status is None:
             status = "ok" if res["evidence"] and not res["missing"] else ("partial" if res["evidence"] else "failed")
@@ -160,6 +162,7 @@ def main() -> None:
     except Exception as e:  # noqa: BLE001
         record_error(res, ctx["source"], ctx["endpoint"], e)
         res["extra"]["traceback_tail"] = redact_text(traceback.format_exc()[-600:])
+    res["extra"]["data_service"] = {"attempts": locals().get("attempts", [])}
     res["extra"]["raw_files"] = [r.get("raw_ref") for r in ctx.get("raws", []) if r.get("raw_ref")]
     res["extra"]["provenance"] = lib_versions(*ep.get("libs", []))
     res["fetched_at"] = now_iso()

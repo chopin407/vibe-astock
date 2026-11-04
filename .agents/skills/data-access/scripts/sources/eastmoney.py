@@ -934,7 +934,8 @@ def market_index_trend(days: int = 300, end: str = "") -> dict:
     不传的话最新一根是今天没收完的那根,「当日涨跌」和页面的业务日就不是同一天。
 
     {indices: [{code, name, source, rows: [{date, close}]}], amount_rows: [{date, sh, sz, total}](元), failed: [{code, name, error}]}
-    指数收盘先取腾讯(北证50 腾讯没有历史,用东财);两市成交额先取东财(含今天),取不到改用 baostock(只到上一个交易日)。
+    配置 TDX 时先健康检查,优先 /index/day;单条失败回退腾讯/东财。
+    两市成交额也优先 TDX,失败回退东财/baostock(可能只到上一个交易日)。
     🔴 盘中最后一根是**截至取数时刻**的未完成日线,收盘前还会变。
     ⚠️ 一条指数取不到不拖垮其余:记进 failed;全部取不到才抛错(那是源坏了,不是"没有数据")。
     """
@@ -953,15 +954,33 @@ def market_index_trend(days: int = 300, end: str = "") -> dict:
     keep = (lambda rows: [r for r in rows if str(r["date"])[:10] <= end]) if end else (lambda rows: rows)
     fetch_n = days + 10 if end else days
     from sources.astock_ported import tencent_kline
+    from sources import tdx_lan
+    tdx_ok = tdx_lan.available()
+    tdx_error = "TDX 未就绪" if not tdx_ok and tdx_lan.settings()["base_url"] else ""
+    local_rows = {}
+
+    def local_index(code, count):
+        if code not in local_rows:
+            local_rows[code] = tdx_lan.index_daily(code, count)
+        return keep(local_rows[code])
+
     indices, failed = [], []
     for secid, name in _TREND_INDICES:
         code = secid.split(".")[1]
         tx = ("sh" if secid.startswith("1.") else "sz") + code
         rows: list[dict] = []
         src, errs = "", list[str]()
+        if tdx_ok:
+            try:
+                rows = local_index("bj" + code if code.startswith("899") else tx, fetch_n)
+                src = "tdx-lan"
+            except Exception as e:
+                errs.append(f"TDX {type(e).__name__}")
+        elif tdx_error:
+            errs.append(tdx_error)
         # 🔴 收盘价先走腾讯:稳定、不占东财的请求配额(东财 push2his 被风控时整段断连,10-09 实测 8 条断 5 条)。
         #    北证50 腾讯只给最新 1 根(源函数直接拒),只能走东财。
-        if not code.startswith("899"):
+        if not rows and not code.startswith("899"):
             try:
                 frame = tencent_kline(tx, period="day", adjust="", count=fetch_n)
                 ref = last_raw_ref()
@@ -987,7 +1006,18 @@ def market_index_trend(days: int = 300, end: str = "") -> dict:
     amount_src, errs = "eastmoney", list[str]()
     for secid in ("1.000001", _AMOUNT_SZ):
         try:
-            got = keep(_index_daily(secid, 130 + (10 if end else 0)))
+            got = []
+            if tdx_ok:
+                try:
+                    key = ("sh" if secid.startswith("1.") else "sz") + secid.split(".")[1]
+                    got = local_index(key, fetch_n)
+                    if not got or any(r.get("amount") is None for r in got):
+                        raise ValueError("TDX 成交额缺失")
+                    got = [{**r, "source": "tdx-lan"} for r in got]
+                except Exception:
+                    got = []
+            if not got:
+                got = [{**r, "source": "eastmoney"} for r in keep(_index_daily(secid, 130 + (10 if end else 0)))]
         except Exception as e:  # noqa: BLE001  换 baostock
             errs.append(f"东财 {type(e).__name__}")
             sh, sz = [], []
@@ -1014,7 +1044,7 @@ def market_index_trend(days: int = 300, end: str = "") -> dict:
         for r in sh[-130:]:
             z = sz_by.get(r["date"])
             if z:
-                amount_rows.append({"date": r["date"], "sh": r["amount"], "sz": z["amount"], "total": r["amount"] + z["amount"], "source": amount_src, "_raw": z["_raw"]})
+                amount_rows.append({"date": r["date"], "sh": r["amount"], "sz": z["amount"], "total": r["amount"] + z["amount"], "source": r.get("source", amount_src) if r.get("source", amount_src) == z.get("source", amount_src) else "tdx-lan+eastmoney", "_raw": z["_raw"]})
     return {"indices": indices, "amount_rows": amount_rows, "failed": failed}
 
 

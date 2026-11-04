@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from data_service import request_timeout
 from common import UA, em_get as _em_get, save_raw  # noqa: E402
 
 
@@ -121,7 +122,7 @@ def _session(trust_env: bool = True):
 def http_get(url: str, params: Optional[dict] = None, headers: Optional[dict] = None, timeout: int = 15,
              encoding: Optional[str] = None, ext: Optional[str] = None, **kw):
     """GET → requests.Response;响应原文自动落盘。encoding 指定解码(如 gbk)。"""
-    r = _session(True).get(url, params=params, headers=headers, timeout=timeout, **kw)
+    r = _session(True).get(url, params=params, headers=headers, timeout=request_timeout(timeout), **kw)
     if encoding:
         r.encoding = encoding
     cap = _current.get()
@@ -132,7 +133,7 @@ def http_get(url: str, params: Optional[dict] = None, headers: Optional[dict] = 
 def http_post(url: str, data: Optional[dict] = None, json_body: Optional[Any] = None, params: Optional[dict] = None, headers: Optional[dict] = None,
               timeout: int = 15, ext: Optional[str] = None, **kw):
     """POST(表单 data 或 JSON body)→ requests.Response;响应原文自动落盘。"""
-    r = _session(True).post(url, data=data, json=json_body, params=params, headers=headers, timeout=timeout, **kw)
+    r = _session(True).post(url, data=data, json=json_body, params=params, headers=headers, timeout=request_timeout(timeout), **kw)
     cap = _current.get()
     r._vra_raw_ref = cap.record(r.content, ext or _guess_ext(r.headers.get("Content-Type", ""), r.url, r.content), r.url) if cap is not None else None  # type: ignore[attr-defined]
     return r
@@ -173,7 +174,7 @@ def em_json(url: str, **kw) -> Any:
 def urlopen_bytes(url: str, headers: Optional[dict] = None, timeout: int = 15, ext: str = "txt") -> bytes:
     """标准库取原文(上游若干脚本用 urllib),同样落盘。"""
     req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with urllib.request.urlopen(req, timeout=request_timeout(timeout, scalar=True)) as resp:
         data = resp.read()
     cap = _current.get()
     if cap is not None:
@@ -256,7 +257,7 @@ def official_get(url: str, params: Optional[dict] = None, headers: Optional[dict
     h.update(headers or {})
     _limiter_for(url).wait()
     try:
-        r = _session(True).get(url, params=params, headers=h, timeout=timeout)
+        r = _session(True).get(url, params=params, headers=h, timeout=request_timeout(timeout))
         cap = _current.get()
         if cap is not None:
             cap.record(r.content, ext or _guess_ext(r.headers.get("Content-Type", ""), r.url, r.content), r.url)
@@ -301,7 +302,7 @@ def yahoo_session():
 
 def yahoo_get(url: str, params: Optional[dict] = None, timeout: int = 15) -> Any:
     s, crumb = yahoo_session()
-    r = s.get(url, params={**(params or {}), "crumb": crumb}, timeout=timeout)
+    r = s.get(url, params={**(params or {}), "crumb": crumb}, timeout=request_timeout(timeout))
     cap = _current.get()
     r._vra_raw_ref = cap.record(r.content, "json", r.url) if cap is not None else None  # type: ignore[attr-defined]
     r.raise_for_status()

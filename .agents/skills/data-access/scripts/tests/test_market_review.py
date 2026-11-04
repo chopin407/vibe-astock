@@ -12,6 +12,12 @@ from sources import eastmoney, mappers, mappers_cn, sina
 from sources import astock_ported, baostock_src, tencent
 
 
+@pytest.fixture(autouse=True)
+def public_source_tests_do_not_use_local_tdx(monkeypatch):
+    from sources import tdx_lan
+    monkeypatch.setattr(tdx_lan, "available", lambda: False)
+
+
 def _mctx(ep_id: str, **kw):
     return _ctx(symbol="MARKET", market="CN", ep={"id": ep_id}, **kw)
 

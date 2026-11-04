@@ -1,4 +1,4 @@
-# 数据源端点目录(registry v1.0.0,共 182 个)
+# 数据源端点目录(registry v1.0.0,共 183 个)
 
 由 `datasources/gen_catalog.py` 从 `registry.json` 生成,勿手改。调用方式:`.venv/bin/python .agents/skills/data-access/scripts/fetch_endpoint.py --endpoint <id> --symbol <代码> [--args '<JSON>'] --out-dir <运行目录>`;legacy 端点为 Phase 0 的独立脚本。合规级:cn-public = 国内公开网页接口;S = 官方政府数据;B = 非官方 / 个人研究;C = 仅个人研究(CBOE 条款);rss-public = 公开 RSS。
 symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = 美股 / 港股自动判别;raw = 原样透传(指数 / 关键词 / 期权标的);none = 不需要标的。
@@ -22,7 +22,7 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `st_stock_list` | ST / *ST 股票名单(沪深京) | CN | eastmoney | cn-public | none | - | 东财名单不可用时上游自动改用 baostock(只覆盖沪深,结果标 partial 并写明原因)。上游 a-stock-data §6 |
 | `em_main_business` | 主营构成(按行业 / 产品 / 地区;收入 / 占比 / 毛利率) | CN | eastmoney | cn-public | cn6 | profile:optional | 收入占比 / 毛利率是源给的小数(0.86 = 86%) |
 
-## 1 行情(11)
+## 1 行情(12)
 
 | id | 标题 | 市场 | 源 | 合规 | symbol_kind | 阶段 | 鉴权 / 备注 |
 |---|---|---|---|---|---|---|---|
@@ -37,6 +37,7 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `tdx_daily_package` | 通达信官网盘后包(某交易日全市场日线含成交额,沪深京) | CN | tdx | cn-public | none | - | HTTP 下载约 2.7MB 压缩包(不是失效的 TCP 行情命令);date 缺省 = 最近一个 17 点后已收盘的交易日;codes 缺省 = 主要指数(sh999999 上证 / sz399001 / sz399006 / sh000300 / sh000688 / bj899050),逗号分隔、可带 sh/sz/bj 前缀;全市场原表在 raw 压缩包里。个股成交量是股、指数为通达信原值。上游 a-stock-data §1.3 |
 | `tx_ticks` | 腾讯当日逐笔成交(沪深个股 / ETF,最近一个交易日) | CN | tencent | cn-public | cn6 | - | 替代 2026-09 起失效的通达信逐笔;一页 70 笔逐页翻到底;15:31 以后才核对盘后定价段(之前取到的标 partial);成交量是手(科创板也是);不支持北交所 / 指数。上游 a-stock-data §1.4 |
 | `bse_quote_backup` | 北交所官网行情快照(单只:开高低收 + 量额 + 五档) | CN | bse | cn-public | cn6 | - | 只接受北交所代码(920 / 4 / 8 开头);官网当前快照,trade_date 缺省 = 今天(交易日)或最近一个交易日,快照日期对不上时上游直接报错、不冒充别的日子;成交量是股。上游 a-stock-data §12 官方备胎 |
+| `tdx_lan_quotes` | 局域网 TDX 批量行情 | CN/US/HK | tdx-lan | cn-public | none | - |  |
 
 ## 2 研报(5)
 
@@ -315,7 +316,7 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `index_constituents` | 指数成分股(中证 / 国证官网文件) | CN | csindex | cn-public | raw | - | 代码原样传 6 位指数代码(如 000300 沪深300、000905 中证500);provider=csi(中证)/ cni(国证)。上游 a-stock-data §12 官方数据 |
 | `index_weights` | 指数成分权重(中证 / 国证官网文件) | CN | csindex | cn-public | raw | - | 中证权重文件为月度收盘权重;证据按权重取前 30,全表在 raw。上游 a-stock-data §12 官方数据 |
 | `index_valuation` | 指数估值(中证官网 PE / 股息率,近期) | CN | csindex | cn-public | raw | - | 总股本 / 计算用股本两种口径分列,不含 PB。上游 a-stock-data §12 官方数据 |
-| `em_market_trend` | 主要指数中长线(5/20/60/250 日涨跌、年初至今、均线、250 日高低点)+ 沪深两市成交额近 60 日 | CN | tencent+eastmoney+baostock | cn-public | none | - | 上证 / 深成 / 创业板 / 沪深300 / 中证500 / 中证1000 / 科创50 / 北证50;按收盘价的固定算法,公式写在每条证据的 note。两市成交额 = 上证指数 + 深证综指。盘中最新一根没收完;传 end(某个交易日)只用那天及以前的日线。 |
+| `em_market_trend` | 主要指数中长线(5/20/60/250 日涨跌、年初至今、均线、250 日高低点)+ 沪深两市成交额近 60 日 | CN | tdx-lan+tencent+eastmoney+baostock | cn-public | none | - | 上证 / 深成 / 创业板 / 沪深300 / 中证500 / 中证1000 / 科创50 / 北证50;按收盘价的固定算法,公式写在每条证据的 note。两市成交额 = 上证指数 + 深证综指。盘中最新一根没收完;传 end(某个交易日)只用那天及以前的日线。 |
 
 ## 20 期货与大宗(7)
 

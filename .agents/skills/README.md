@@ -16,3 +16,15 @@
 SKILL.md frontmatter:显式写 `name`(≤64 字符)与 `description`。注入提示词时 frontmatter 会被去掉,只放正文。
 
 改了某个 SKILL.md,下一次研究运行就会带上新版本;删掉或清空一个被 `STAGE_SKILLS` 引用的 SKILL.md,研究会在该阶段直接报错,不会在缺方法论的情况下照常跑完。
+
+
+## 妙想补充数据工具
+
+已安装本机来源的 `mx-data`（行情、财务与关系数据）和 `mx-search`（新闻、公告、研报等资讯检索）。两者共用环境变量 `MX_APIKEY`，默认产物分别保存在 `.local/mx/mx-data/`、`.local/mx/mx-search/`。这些辅助技能不注入研究阶段，也不改变研究大脑的受控工具权限。
+
+在项目根目录调用：
+
+```powershell
+.venv\Scripts\python.exe .agents\skills\mx-data\mx_data.py "沪深300指数最新点位 涨跌幅"
+.venv\Scripts\python.exe .agents\skills\mx-search\mx_search.py "A股最新交易规则公告"
+```

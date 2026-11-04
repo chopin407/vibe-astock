@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import math
 import sys
 from typing import Optional
 
@@ -38,7 +39,7 @@ def _f(vals: list, i: int) -> Optional[float]:
         v = float(vals[i]) if vals[i] not in ("", None) else None
     except (ValueError, IndexError, TypeError):
         return None
-    return None if v is None or v != v else v
+    return None if v is None or not math.isfinite(v) else v
 
 
 def _opt(vals: list, i: int, zero_is_missing: bool = False) -> Optional[float]:
@@ -47,7 +48,7 @@ def _opt(vals: list, i: int, zero_is_missing: bool = False) -> Optional[float]:
         v = float(vals[i])
     except (ValueError, IndexError, TypeError):
         return None
-    return None if v != v or (zero_is_missing and v == 0) else v
+    return None if not math.isfinite(v) or (zero_is_missing and v == 0) else v
 
 
 # 🔴 港股、美股的字段布局和 A 股不一样（2026-10-09 逐位核对腾讯、阿里、建行、平安、苹果、伯克希尔）：

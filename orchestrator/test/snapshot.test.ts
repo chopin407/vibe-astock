@@ -10,6 +10,27 @@ const tmp = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "vra-snap-"));
 const ok = () => true;
 const META = { endpoint: "fetch_quote", symbol: "300308" };
 
+test("快照不接受未来或非法时间，默认不限龄也不能绕过", () => {
+  const snap = { schema: SNAPSHOT_SCHEMA, key: "x", ...META, payload: {} };
+  assert.equal(snapshotUsable({ ...snap, fetched_at: "invalid" }, { mode: "prefer_cache" }), false);
+  assert.equal(snapshotUsable({ ...snap, fetched_at: new Date(Date.now() + 60_000).toISOString() }, { mode: "prefer_cache" }), false);
+});
+
+test("内存淘汰不删除磁盘快照，旧条目可重新加载", () => {
+  resetSnapshotMemory();
+  const root = tmp();
+  try {
+    for (let i = 0; i < 260; i++) writeSnapshot(root, `entry-${i}`, META, { value: i }, ok);
+    // The oldest entry must be read from disk after capacity eviction.
+    const file = path.join(root, "snapshots", "entry-0.json");
+    const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
+    onDisk.payload.value = 1000;
+    fs.writeFileSync(file, JSON.stringify(onDisk));
+    assert.equal(readSnapshot<{ value: number }>(root, "entry-0")?.payload.value, 1000);
+    assert.equal(listSnapshots(root).length, 260);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); resetSnapshotMemory(); }
+});
+
 test("快照内存按数据根隔离，等价根路径仍使用同一份缓存", () => {
   resetSnapshotMemory();
   const a = tmp(), b = tmp(), k = snapshotKey("ep", "s");

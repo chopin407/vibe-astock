@@ -666,7 +666,7 @@ def em_market_trend_map(result: dict, ctx: dict) -> dict:
         day = last["date"]
         rk = f"index|{it['code']}"
         src = it.get("source") or "eastmoney"
-        base = f"{it['name']}({it['code']});按收盘价({'腾讯' if src == 'tencent' else '东财'}日线);N 日 = N 个交易日;最新一根={day}"
+        base = f"{it['name']}({it['code']});按收盘价({ {'tencent': '腾讯', 'tdx-lan': '局域网TDX'}.get(src, src) }日线);N 日 = N 个交易日;最新一根={day}"
 
         def add(field, v, unit, extra_note=""):
             if v is not None:

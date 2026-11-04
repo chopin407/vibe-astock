@@ -294,7 +294,10 @@ export async function fetchEndpoint(
   // 产出里含"按此刻算出来"的字段时,缓存住就会被永久冻结(上午算的状态晚上还在读)。
   const epMaxAge = typeof ep.cache_max_age_sec === "number" ? ep.cache_max_age_sec * 1000 : null;
   const hit = readSnapshot<FetchResult>(ctx.dataRoot, snapKey);
-  if (snapshotUsable(hit, consistency, epMaxAge)) {
+  // Partial results should heal on the next visit instead of persisting forever.
+  const hitStatus = (hit?.payload.envelope as { status?: unknown } | undefined)?.status;
+  const cacheMaxAge = hitStatus === "partial" ? Math.min(epMaxAge ?? Infinity, (ep.cache_partial_sec ?? 60) * 1000) : epMaxAge;
+  if (snapshotUsable(hit, consistency, cacheMaxAge)) {
     return { ...(hit as NonNullable<typeof hit>).payload, cached: true, fetched_at: (hit as NonNullable<typeof hit>).fetched_at };
   }
   if (consistency.mode === "cache_only") {
@@ -335,7 +338,9 @@ export async function fetchEndpoint(
     //    `failed` 或一条证据都没有,就是这次没取到,别让它变成用户下次打开看到的东西。
     const snap = writeSnapshot(ctx.dataRoot, snapKey, { endpoint: ep.id, symbol }, result, (r) => {
       const env = r.envelope as { status?: unknown; evidence?: unknown };
-      return r.exit_code === 0 && env.status !== "failed" && Array.isArray(env.evidence) && env.evidence.length > 0;
+      const successful = r.exit_code === 0 && env.status === "ok";
+      const retryable = r.exit_code === 2 && env.status === "partial" && typeof ep.cache_partial_sec === "number" && ep.cache_partial_sec > 0 && hitStatus !== "ok";
+      return (successful || retryable) && Array.isArray(env.evidence) && env.evidence.length > 0;
     });
     return snap ? { ...result, fetched_at: snap.fetched_at } : result;
   })();

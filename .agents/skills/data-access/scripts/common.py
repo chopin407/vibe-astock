@@ -14,12 +14,14 @@ import argparse
 import errno
 import hashlib
 import json
+import math
 import os
 import random
 import re
 import sys
 import tempfile
 import time
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 
@@ -188,6 +190,8 @@ def _em_get_uncached(url: str, params: Optional[dict] = None, headers: Optional[
     """东财统一入口:跨进程串行(锁覆盖整个请求)+ 会话复用 + UA/Referer;403 不重试。
     先按系统代理设置请求,遇连接类错误再直连重试一次(东财单域经代理常断连);每次重试同样排队。"""
     import requests
+    from data_service import request_timeout
+    timeout = request_timeout(timeout)
 
     try:
         return _em_serial(lambda: _em_session(True).get(url, params=params, headers=headers, timeout=timeout))
@@ -195,18 +199,51 @@ def _em_get_uncached(url: str, params: Optional[dict] = None, headers: Optional[
         return _em_serial(lambda: _em_session(False).get(url, params=params, headers=headers, timeout=timeout))
 
 
+REVIEW_POOL_CACHE = Path(__file__).resolve().parents[4] / ".local" / "cache" / "review-http"
+
+
+def _review_pool_settled(params, observed_at):
+    """Only observations obtained after the requested day's 16:30 are archival."""
+    raw = str((params or {}).get("date", ""))
+    if not re.fullmatch(r"[0-9]{8}", raw):
+        return False
+    try:
+        cutoff = datetime.strptime(raw, "%Y%m%d").replace(hour=16, minute=30, tzinfo=TZ_SH)
+        return observed_at >= cutoff.timestamp()
+    except (ValueError, TypeError):
+        return False
+
+
+def _valid_review_pool(payload, params):
+    if not isinstance(payload, dict) or payload.get("rc", 0) != 0:
+        return False
+    data = payload.get("data")
+    if not isinstance(data, dict) or not isinstance(data.get("pool"), list) or not data["pool"]:
+        return False
+    want = str((params or {}).get("date", ""))
+    latest = str(data.get("qdate") or "")
+    # Historical responses may advertise the latest available session, but an
+    # older session must not be frozen as the requested day's successful pool.
+    return not (len(want) == len(latest) == 8 and want.isdigit() and latest.isdigit() and latest < want)
+
+
 def _em_get_review_cached(url: str, params: Optional[dict] = None, headers: Optional[dict] = None, timeout: int = 15):
-    """Share successful limit-pool responses for 60 seconds across review workers.
+    """Share successful pool responses across workers; archive settled observations.
 
     Per-key locking coalesces identical requests before the global EM rate limiter.
-    Failures and empty pools are never cached. Callers still archive response bytes.
+    Historical observations fetched after 16:30 persist in .local/cache/review-http.
+    Live responses expire after 60 seconds. Failures and empty pools are never cached.
+    Callers still archive response bytes.
     VRA_REVIEW_CACHE=0 bypasses this optimization.
     """
-    if not url.startswith(("https://push2ex.eastmoney.com/getTopic", "https://push2ex.eastmoney.com/getYesterdayZTPool")) or os.environ.get("VRA_REVIEW_CACHE") == "0":
+    from data_service import settings as service_settings
+    policy = service_settings()
+    if not policy["review_cache"] or not url.startswith(("https://push2ex.eastmoney.com/getTopic", "https://push2ex.eastmoney.com/getYesterdayZTPool")) or os.environ.get("VRA_REVIEW_CACHE") == "0":
         return _em_get_uncached(url, params, headers, timeout)
     import requests
     key = hashlib.sha256(json.dumps([url, params, headers], sort_keys=True).encode()).hexdigest()
-    folder = os.path.join(tempfile.gettempdir(), "vra-review-http")
+    archival = _review_pool_settled(params, time.time())
+    folder = str(REVIEW_POOL_CACHE) if archival else os.path.join(tempfile.gettempdir(), "vra-review-http")
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, key + ".json")
     with open(path + ".lock", "a+") as lock:
@@ -215,7 +252,8 @@ def _em_get_review_cached(url: str, params: Optional[dict] = None, headers: Opti
             try:
                 with open(path, encoding="utf-8") as cached_file:
                     cached = json.load(cached_file)
-                if 0 <= time.time() - cached["at"] < 60:
+                age = time.time() - cached["at"]
+                if age >= 0 and ((_review_pool_settled(params, cached["at"]) and archival) or age < policy["review_live_cache_sec"]):
                     response = requests.Response()
                     response.status_code = 200
                     response._content = cached["body"].encode("utf-8")
@@ -227,7 +265,7 @@ def _em_get_review_cached(url: str, params: Optional[dict] = None, headers: Opti
             response = _em_get_uncached(url, params, headers, timeout)
             try:
                 data = response.json()
-                if response.status_code == 200 and data.get("rc", 0) == 0 and (data.get("data") or {}).get("pool"):
+                if response.status_code == 200 and _valid_review_pool(data, params):
                     atomic_write_json(path, {"at": time.time(), "body": response.content.decode("utf-8"), "url": response.url})
             except (ValueError, AttributeError, UnicodeError):
                 pass
@@ -434,7 +472,8 @@ def to_float(v: Any) -> Optional[float]:
     try:
         if v is None or v == "" or v == "--" or v == "-":
             return None
-        return float(v)
+        number = float(v)
+        return number if math.isfinite(number) else None
     except (TypeError, ValueError):
         return None
 

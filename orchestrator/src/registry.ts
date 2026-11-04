@@ -45,6 +45,8 @@ export interface EndpointDef {
    *    (Codex 架构评审 arch-r1 §B)。
    */
   cache_max_age_sec?: number | null;
+  /** Opt-in short-lived caching for partial results; absent means never store them. */
+  cache_partial_sec?: number;
   /**
    * 这个端点给谁看。缺省 `ui`(界面和 agent 都能用)。
    * `agent` = **界面不展示、只让 AI 调用**(如管制与准入、名单核查)——

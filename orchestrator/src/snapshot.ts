@@ -52,7 +52,27 @@ export interface Snapshot<T = unknown> {
   payload: T;
 }
 
-const mem = new Map<string, { at: number; snap: Snapshot }>();
+const mem = new Map<string, { at: number; snap: Snapshot; bytes: number }>();
+const MEM_MAX_ENTRIES = 256;
+const MEM_MAX_BYTES = 32 * 1024 * 1024;
+let memBytes = 0;
+
+function forget(file: string): void {
+  const old = mem.get(file);
+  if (old) memBytes -= old.bytes;
+  mem.delete(file);
+}
+
+function remember(file: string, snap: Snapshot): void {
+  forget(file);
+  const bytes = Buffer.byteLength(JSON.stringify(snap), "utf8");
+  if (bytes > MEM_MAX_BYTES) return;
+  const now = Date.now();
+  for (const [key, entry] of mem) if (now - entry.at >= MEM_TTL_MS) forget(key);
+  mem.set(file, { at: now, snap, bytes });
+  memBytes += bytes;
+  while (mem.size > MEM_MAX_ENTRIES || memBytes > MEM_MAX_BYTES) forget(mem.keys().next().value!);
+}
 
 /**
  * 递归规范化:对象按键名排序,数组保序(数组的顺序是语义的一部分)。
@@ -108,8 +128,9 @@ export function snapshotUsable(snap: Snapshot | null, c: Consistency, endpointMa
   // 端点声明的上限**永远生效**,调用方放宽不了 —— 它是数据本身的性质(如 session_phase 随分钟变)
   const limits = [endpointMaxAgeMs, c.mode === "prefer_cache" ? c.max_age_ms : undefined]
     .filter((x): x is number => typeof x === "number");
-  if (limits.length === 0) return true;
   const age = Date.now() - Date.parse(snap.fetched_at);
+  if (!Number.isFinite(age) || age < 0) return false;
+  if (limits.length === 0) return true;
   return age <= Math.min(...limits);
 }
 
@@ -118,11 +139,15 @@ export function readSnapshot<T = unknown>(dataRoot: string, key: string): Snapsh
   const file = fileOf(dataRoot, key);
   if (!linkFree(file)) return null;
   const hit = mem.get(file);
-  if (hit && Date.now() - hit.at < MEM_TTL_MS) return hit.snap as Snapshot<T>;
+  if (hit && Date.now() - hit.at < MEM_TTL_MS) {
+    mem.delete(file); mem.set(file, hit);
+    return hit.snap as Snapshot<T>;
+  }
+  forget(file);
   const raw = readJsonIfExists<Snapshot<T>>(file);
   // ⚠️ 读的是产品自己写的文件,但仍要查形状:用户可能手改过,也可能是上一个版本写的
   if (!raw || typeof raw !== "object" || raw.schema !== SNAPSHOT_SCHEMA || typeof raw.fetched_at !== "string") return null;
-  mem.set(file, { at: Date.now(), snap: raw as Snapshot });
+  remember(file, raw as Snapshot);
   return raw;
 }
 
@@ -149,7 +174,7 @@ export function writeSnapshot<T>(
   const file = fileOf(dataRoot, key);
   if (!linkFree(file)) return null;   // 不写:本次结果照常返回,只是不留快照
   atomicWrite(file, `${JSON.stringify(snap, null, 2)}\n`);
-  mem.set(file, { at: Date.now(), snap: snap as Snapshot });
+  remember(file, snap as Snapshot);
   return snap;
 }
 
@@ -169,4 +194,5 @@ export function listSnapshots(dataRoot: string): { key: string; endpoint: string
 /** 测试用:清空内存层(磁盘层不动) */
 export function resetSnapshotMemory(): void {
   mem.clear();
+  memBytes = 0;
 }

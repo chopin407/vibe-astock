@@ -57,20 +57,33 @@ def tencent_quotes_map(result: dict, ctx: dict) -> dict:
     evs, stale, missing = [], [], []
     for code, q in result.items():
         note = f"{q.get('name')}({q.get('query')})" + (f";僵尸报价:{q.get('stale_reason')}" if q.get("is_stale") else "")
+        if not q.get("quote_time"):
+            note += ";行情日期未核验，period 仅为抓取日"
         # 🔴 **逐行判市场**:这个端点同时能取 A股 / 美股 / 港股(腾讯的 usDJI、hkHSI 等)。
         #    沿用端点级的 CN 会把道指标成 `CNY` —— 数字对、标签错,而界面上不显示币种,
         #    所以**看不出来**;错的那份会随证据进 AI 上下文。市场决定币种(见 `ev()`)。
-        rctx = {**ctx, "market": _tx_market(str(code))}
+        rctx = {**ctx, "market": _tx_market(str(code)), "source": q.get("source") or ctx["source"], "raw_ref": q.get("_raw", ctx.get("raw_ref"))}
         e, miss = dict_fields(rctx, q, _tx_specs(rctx["market"]), day, record_key=str(code), note=note)
         evs += e
         # 缺的字段如实列出(腾讯给空值时不再读成 0);港美股本来就没有的几项(涨跌停、量比、静态市盈率)不算缺
         skip = _TX_NOT_IN_GLOBAL if rctx["market"] != "CN" else ()
         missing += [{**m, "record_key": str(code)} for m in miss if m["field"] not in skip]
-        evs.append(ev(rctx, "security_name", q.get("name", ""), "text", day, currency="n/a", record_key=str(code), note=note))
+        if q.get("name"):
+            evs.append(ev(rctx, "security_name", q["name"], "text", day, currency="n/a", record_key=str(code), note=note))
+        else:
+            missing.append({"field": "security_name", "record_key": str(code), "period": day, "reason": "源未提供名称"})
         if q.get("quote_time"):   # 成交时间原样(交易所当地时间),没有就不出这一条
             evs.append(ev(rctx, "quote_time", q["quote_time"], "text", day, currency="n/a", record_key=str(code), note=note))
+        if not q.get("quote_time"):
+            missing.append({"field": "quote_time", "record_key": str(code), "period": day, "reason": "源未提供可核验的交易所行情时间"})
         if q.get("is_stale"):
             stale.append(code)
+    requested = ctx.get("args", {}).get("codes", [])
+    if isinstance(requested, str):
+        requested = [c.strip() for c in requested.split(",") if c.strip()]
+    for code in requested:
+        if code not in result:
+            missing.append({"field": "price", "record_key": str(code), "period": day, "reason": "请求的标的未返回行情"})
     all_stale = bool(stale) and len(stale) == len(result)
     return out(evs, extra={"stale": stale, "codes": list(result)}, missing=missing, status="partial" if all_stale else None, degraded="全部为僵尸报价(停牌 / 废码 / 非交易时段无成交)" if all_stale else None)
 

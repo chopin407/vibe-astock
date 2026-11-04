@@ -13,6 +13,7 @@ import os
 import sys
 import urllib.request
 from datetime import date
+from typing import Callable
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import (EM_PUSH2HIS_HOSTS, UA, base_parser, em_multi_host, em_secid, evidence, finish,
@@ -75,7 +76,12 @@ def main() -> None:
     digits, market = parse_symbol_or_exit(args.symbol, SCRIPT, args.out_dir)
     res = result_skeleton(SCRIPT, digits, market)
     from sources.tdx_lan import kline as src_tdx, settings as tdx_settings
-    sources = (("tdx-lan", src_tdx),) if tdx_settings()["base_url"] else ()
+    sources: tuple[tuple[str, Callable], ...] = ()
+    try:
+        if tdx_settings()["base_url"]:
+            sources = (("tdx-lan", src_tdx),)
+    except Exception as e:
+        record_error(res, "tdx-lan", "config", e)
     for name, fn in sources + (("tencent", src_tencent), ("eastmoney", src_eastmoney)):
         try:
             rows, raw, src, ep = fn(digits, market, args.out_dir, args.bars, args.timeout, res)

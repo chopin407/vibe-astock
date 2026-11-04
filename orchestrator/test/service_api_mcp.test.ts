@@ -1441,3 +1441,28 @@ setInterval(()=>{},1000);
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+
+test("部分成功快照短期复用并在一分钟后重试，不覆盖完整快照", async () => {
+  const { snapshotKey, readSnapshot, writeSnapshot, resetSnapshotMemory } = await import("../src/snapshot.ts");
+  const ctx = fakeCtx();
+  const req = { endpoint: "tx_quotes_batch", args: { codes: ["300308"] } };
+  const key = snapshotKey(req.endpoint, "", req.args);
+  try {
+    const first = await fetchEndpoint(ctx, { ...req, refresh: true });
+    const partial = { ...first, exit_code: 2, envelope: { ...first.envelope, status: "partial" } };
+    const snap = writeSnapshot(ctx.dataRoot, key, { endpoint: req.endpoint, symbol: "" }, partial, () => true)!;
+    assert.equal((await fetchEndpoint(ctx, req)).cached, true);
+    snap.fetched_at = new Date(Date.now() - 61_000).toISOString();
+    fs.writeFileSync(path.join(ctx.dataRoot, "snapshots", `${key}.json`), JSON.stringify(snap));
+    resetSnapshotMemory();
+    const healed = await fetchEndpoint(ctx, req);
+    assert.equal(healed.cached, false);
+    assert.equal(healed.envelope.status, "ok");
+    const script = path.join(ctx.repoRoot, ".agents", "skills", "data-access", "scripts", "fetch_endpoint.py");
+    fs.writeFileSync(script, fs.readFileSync(script, "utf8").replace('"status":"ok"', '"status":"partial"').replace('sys.exit(0)', 'sys.exit(2)'));
+    const degraded = await fetchEndpoint(ctx, { ...req, refresh: true });
+    assert.equal(degraded.envelope.status, "partial");
+    assert.equal(readSnapshot<{ envelope: { status: string } }>(ctx.dataRoot, key)?.payload.envelope.status, "ok");
+  } finally { fs.rmSync(ctx.repoRoot, { recursive: true, force: true }); resetSnapshotMemory(); }
+});
