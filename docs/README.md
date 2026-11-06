@@ -1,5 +1,8 @@
 # docs
 
+- [主线方向与关联观察股](mainline-feature.md) — 事件题材、行业成分、妙想补充、盘中确认和独立验证的入口、边界与验收。
+- [主线板块识别与潜力个股观察设计](mainline-discovery-design.md) — 总体设计与后续行业趋势、关系拓展路线；实际交付范围以上述功能说明为准。
+
 - Vibe AStock 从 v2.0.0 起和 [Vibe Research](https://github.com/simonlin1212/Vibe-Research) 共用一套底座，本目录随底座一起来自 Vibe Research：
   下面带日期的里程碑文档、v1.x 版本号（如 v1.1.0、v1.2.0）和其中的 Codex 相关内容都是 **Vibe Research 的历史**，不是 Vibe AStock 的。
   Vibe AStock 旧版（v1.x，Python 程序）的文档在仓库 `v1.1.3` 标签下。

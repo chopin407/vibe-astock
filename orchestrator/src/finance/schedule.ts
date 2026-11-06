@@ -306,6 +306,16 @@ export const FINANCE_SCHEDULE: ScheduleDef = {
   beat: async (b) => (await import("./shortline/intraday.ts")).intradayBeat(b),
   jobs: [
     {
+      id: "mainline_close", label: "主线方向收盘观察", at: "15:45", defaultEnabled: true,
+      description: "保存完整事件题材观察和关联成员，保留缺口与证据；不调用 AI。",
+      run: async (j) => {
+        const { refreshMainline } = await import("./mainline.ts");
+        const snapshot = await refreshMainline(j.ctx, { date: j.day, mode: "close" }, j.signal);
+        const tags = snapshot.data.directions.filter(d => d.checks.persistent).map(d => d.tag);
+        return { messages: [{ title: `主线方向观察 ${j.day}`, lines: [tags.length ? `持续活跃事件样本：${tags.join("、")}` : "尚未确认持续主线", `数据缺口 ${snapshot.data.gaps.length} 项；事件样本不代表全市场行业趋势。`], link: "/daily-review", dedupeKey: `mainline_close:${j.day}` }], note: `已保存方向快照 ${snapshot.id}` };
+      },
+    },
+    {
       id: "shortline_premarket", label: "盘前提醒", at: "09:05", defaultEnabled: true,
       description: "集合竞价前:隔夜美股三大指数、A50 期指和美元兑人民币;前一交易日连板股(2 板及以上)的新公告标题、今天是否停牌、按交易所规则推算离严重异常波动较近的;今天申购和上市的新股。只列事实;设在上午、拖到 11:30 以后才补跑的不发。",
       // 动态导入:premarket.ts 反过来要用本文件的 pool / failedNote / rowsOf

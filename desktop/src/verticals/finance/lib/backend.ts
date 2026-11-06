@@ -402,6 +402,14 @@ export const backend = {
   },
   /** 候选池:查询串由 candidateQuery 拼好(范围、各指标区间、排除项、是否重新取) */
   candidates: (query: string) => call<CandidateResult>(`/view/candidates?${query}`),
+  mainline: (query: string, signal?: AbortSignal) => call<import("./mainline").MainlineView>(`/view/mainline?${query}`, { signal }),
+  mainlineRefresh: (body: { date?: string; mode: string; refresh?: boolean; industry_id?: string }, signal?: AbortSignal) =>
+    call<import("./mainline").MainlineSnapshot>("/view/mainline", { method: "POST", body: JSON.stringify(body), signal }),
+  mainlineIndustries: (scan: boolean, signal?: AbortSignal) => call<import("./mainline").IndustryCatalog>(`/view/mainline_industries?scan=${scan ? "1" : "0"}`, { signal }),
+  mainlineSupplement: (snapshot_id: string, direction_id: string, signal?: AbortSignal) => call<import("./mainline").Supplement>("/view/mainline_supplement", { method: "POST", body: JSON.stringify({ snapshot_id, direction_id }), signal }),
+  mainlineSupplements: (snapshot_id: string, signal?: AbortSignal) => call<import("./mainline").Supplement[]>(`/view/mainline_supplement?snapshot_id=${encodeURIComponent(snapshot_id)}`, { signal }),
+  mainlinePlans: (signal?: AbortSignal) => call<import("./mainline").DirectionPlan[]>("/view/mainline_verification", { signal }),
+  mainlinePlan: (snapshot_id: string, direction_id: string, metric: string, expected: boolean) => call<unknown>("/view/mainline_verification", { method: "POST", body: JSON.stringify({ snapshot_id, direction_id, metric, expected }) }),
   /** 判据回看:到期没判的(带写下以来的公告)、校准表、最近判过的 */
   verdicts: (opts: { refresh?: boolean } = {}) => call<VerdictResult>(`/view/verdicts${opts.refresh ? "?refresh=1" : ""}`),
   /** 异动接近度:后端读台账里的自选,按交易所规则推算;refresh=true 不用缓存 */

@@ -6,6 +6,7 @@ import { PageTabs, type PageTab } from "@/components/ui/PageTabs";
 import { Disclaimer } from "@/components/ui/Disclaimer";
 import { cn } from "@/lib/utils";
 import { LiveTab } from "@/shortline/LiveTab";
+import { MainlinePanel } from "@/components/MainlinePanel";
 import { IntradayTab } from "@/shortline/IntradayTab";
 
 type Tab = "live" | "intraday";
@@ -67,6 +68,7 @@ export function Watch() {
       />
       <PageTabs label="盯盘的分页" value={tab} onChange={pickTab} options={TABS} />
       {tab === "live" ? <LiveTab /> : <IntradayTab key={date ?? "today"} date={date} refreshNonce={refreshNonce} onBusy={setBusy} />}
+      <MainlinePanel date={date} mode="intraday" />
       <Disclaimer />
     </div>
   );

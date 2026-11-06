@@ -1,4 +1,4 @@
-# 数据源端点目录(registry v1.0.0,共 183 个)
+# 数据源端点目录(registry v1.0.0,共 188 个)
 
 由 `datasources/gen_catalog.py` 从 `registry.json` 生成,勿手改。调用方式:`.venv/bin/python .agents/skills/data-access/scripts/fetch_endpoint.py --endpoint <id> --symbol <代码> [--args '<JSON>'] --out-dir <运行目录>`;legacy 端点为 Phase 0 的独立脚本。合规级:cn-public = 国内公开网页接口;S = 官方政府数据;B = 非官方 / 个人研究;C = 仅个人研究(CBOE 条款);rss-public = 公开 RSS。
 symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = 美股 / 港股自动判别;raw = 原样透传(指数 / 关键词 / 期权标的);none = 不需要标的。
@@ -101,7 +101,7 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `wscn_lives` | 华尔街见闻 7×24 快讯 | CN | wallstreetcn | cn-public | none | - | channel 例 global-channel / a-stock-channel / us-stock-channel;cursor 翻页(上一页的 next_cursor);快讯常无标题,证据取正文前 300 字。上游 a-stock-data §5 |
 | `cctv_news` | 新闻联播文字稿(标题 + 正文) | CN | cctv | cn-public | none | - | 每天都播(含节假日);date 缺省 = 北京时间 20 点后取今天、否则昨天;只陈述原文,不做政策解读。上游 a-stock-data §5 |
 
-## 8 打板(16)
+## 8 打板(21)
 
 | id | 标题 | 市场 | 源 | 合规 | symbol_kind | 阶段 | 鉴权 / 备注 |
 |---|---|---|---|---|---|---|---|
@@ -121,6 +121,11 @@ symbol_kind:cn6 = A 股 6 位码;us = 美股 ticker;hk = 港股 5 位;global = �
 | `cn_shortline_firstboard` | 短线首板名单(东财连板数 = 1 的涨停股,按首封时间排,含涨停原因、开板次数、成交额、流通市值;反包票单独标出) | CN | eastmoney+ths+calc | cn-public | none | - | 计算型端点:取数层确定性计算(非 calc DAG),移植自 Vibe AStock v2.0.0;信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。涨停原因来源同 cn_shortline_themes;原因取不到时名单照出、标 partial(不缓存,下次再取)。已收盘的日子长期缓存;没收盘的那一天一律 partial |
 | `cn_shortline_board_ladder` | 短线连板天梯(某天收盘时每个高度的涨停股:首封 / 末封时间、开板次数、封单、涨停原因;前一交易日低一档今天没接上的票去向 —— 炸板 / 跌停 / 没涨停及当天涨跌幅;每一档的晋级数) | CN | eastmoney+ths+calc | cn-public | none | - | 计算型端点:取数层确定性计算(非 calc DAG);信封 extra.result 是完整结构化结果、extra.text 是给模型读的文字版、extra.computation 记参数供复算。板位按东财连板数(反包票连板数是 1,标「N天M板」),晋级按昨天这一档的票今天还在涨停池里,与情绪四项同口径;最高标断板那一档今天没人也留一行。没接上的票当天涨跌幅先用定稿记录(东财昨日涨停池),缺了再看炸板 / 跌停池。涨停原因来源同 cn_shortline_themes,取不到时天梯照出、标 partial。已收盘的日子长期缓存;没收盘的那一天一律 partial |
 | `cn_shortline_theme_rotation` | 短线题材轮动(近 N 个交易日每个事件题材每天的涨停只数与当天名次、连续几天有涨停、几天进前三、隔几天回流;昨天还有今天没有的也列出) | CN | eastmoney+ths+calc | cn-public | none | - | 计算型端点:取数层确定性计算(非 calc DAG);信封结构同 cn_shortline_themes。题材按涨停原因串里的标签归组(滤掉国企改革、破净等属性词),同义不同名的标签分开算。某天涨停池或原因没取到按缺数(None)处理、标 partial,不当 0;东财涨停池只留约一个月,更早的日子会缺。days 3–10,默认 5(约 2×days 次请求)。已收盘的日子长期缓存;没收盘的那一天一律 partial |
+| `cn_mainline` | 主线方向与关联观察股（完整事件样本） | CN | eastmoney+ths+calc | cn-public | none | - | 完整涨停及题材关系，三交易日确定性观察；逐维度缺值，非全市场行业趋势。盘中仅抓取时刻，不能严格确认。 |
+| `cn_industry_catalog` | TDX完整行业目录与指数扫描 | CN | tdx-lan+tencent+calc | cn-public | none | - | 受控方向补充；保留全量输入，未核实数据不参与计算 |
+| `cn_industry_observation` | 行业完整成分广度与指数持续性 | CN | tdx-lan+tencent+calc | cn-public | none | - | 受控方向补充；保留全量输入，未核实数据不参与计算 |
+| `mx_direction_data` | 妙想方向关系结构化补充 | CN | mx | cn-public | none | - | env MX_APIKEY; 受控方向补充；保留全量输入，未核实数据不参与计算 |
+| `mx_direction_news` | 妙想方向事件检索补充 | CN | mx | cn-public | none | - | env MX_APIKEY; 受控方向补充；保留全量输入，未核实数据不参与计算 |
 
 ## 10 情绪(15)
 

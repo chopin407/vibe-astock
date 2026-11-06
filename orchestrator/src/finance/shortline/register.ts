@@ -3,6 +3,8 @@
  * 由 `../register_tasks.ts` 导入一次(提供 API 的入口才需要视图)。
  */
 import { registerView } from "../../views.ts";
+import { mainlineView, refreshMainline, industryCatalog } from "../mainline.ts";
+import { supplementView, supplementAction, verificationView, verificationAction } from "../mainline_followup.ts";
 import { shortlineHistory } from "./history.ts";
 import { shortlineIntraday, shortlineIntradayAct } from "./intraday.ts";
 import { shortlineReview, shortlineReviewAct } from "./review.ts";
@@ -14,6 +16,10 @@ import { shortlineWeekly } from "./weekly.ts";
 import { shortlineWeeklyReview, shortlineWeeklyReviewAct } from "./weekly_review.ts";
 
 registerView({ id: "shortline_history", label: "情绪历史", run: shortlineHistory });
+registerView({ id: "mainline", label: "主线方向与观察股", run: mainlineView, act: refreshMainline });
+registerView({ id: "mainline_industries", label: "行业目录与指数扫描", run: industryCatalog });
+registerView({ id: "mainline_supplement", label: "方向关系与事件补充", run: supplementView, act: supplementAction });
+registerView({ id: "mainline_verification", label: "方向独立验证", run: verificationView, act: verificationAction });
 registerView({ id: "shortline_verify", label: "明日验证", run: shortlineVerify, act: shortlineVerifyAct });
 registerView({ id: "shortline_samples", label: "涨停样本统计", run: shortlineSamples });
 registerView({ id: "shortline_structure", label: "结构变化", run: shortlineStructure });

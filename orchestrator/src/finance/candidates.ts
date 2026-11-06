@@ -16,6 +16,7 @@
  *   东财列表类接口 9 月以来又时常不可用,所以不用。
  */
 import fs from "node:fs";
+import { loadMainline } from "./mainline.ts";
 import { fetchEndpoint, ledgerList, ledgerSnapshot, safePath, ServiceError, type ServiceContext } from "../service.ts";
 import { isCnFundOrBond } from "./events.ts";
 import { heldFromLedger } from "./holdings.ts";
@@ -208,6 +209,7 @@ const uniqSorted = (list: { symbol: string; name: string }[]) => {
 
 export async function candidatePool(ctx: ServiceContext, query: Record<string, string>, signal: AbortSignal, now = new Date()): Promise<CandidateResult> {
   const uid = query.universe ?? "watch";
+  if (uid === "direction") return directionCandidates(ctx, query, now);
   const uni = UNIVERSES.find((u) => u.id === uid);
   if (!uni) throw new ServiceError("bad_query", `没有这个范围:${uid.slice(0, 20)}`);
   const ranges = parseRanges(query);
@@ -317,4 +319,38 @@ export async function candidatePool(ctx: ServiceContext, query: Record<string, s
     quotes: { source: quoteSource, fetched_at: fetchedAt[0] ?? null, cached },
     conditions, rows, counts, generated_at: now.toISOString(), gaps,
   };
+}
+
+/** 只用该观察版本的价格字段，不用今天报价回填历史候选结果。 */
+export function directionCandidates(ctx: Pick<ServiceContext, "dataRoot">, query: Record<string, string>, now = new Date()): CandidateResult {
+  const snapshot = loadMainline(ctx, query.snapshot_id ?? "");
+  const direction = snapshot.data.directions.find(d => d.id === query.direction_id);
+  if (!direction) throw new ServiceError("bad_query", "该快照没有这个方向");
+  const ranges = parseRanges(query);
+  const opts = { excludeSt: query.exclude_st === "1", excludeHalted: query.exclude_halted === "1", haltKnown: false };
+  const relativeMin = parseBound(query.relative_min, "相对涨幅下限");
+  const relativeMax = parseBound(query.relative_max, "相对涨幅上限");
+  if (relativeMin !== null && relativeMax !== null && relativeMin > relativeMax) throw new ServiceError("bad_query", "相对涨幅下限大于上限");
+  const relative = relativeMin !== null || relativeMax !== null;
+  if (!Object.keys(ranges).length && !opts.excludeSt && !opts.excludeHalted && !relative) throw new ServiceError("bad_query", "至少设一个条件");
+  const rows = direction.members.map(m => {
+    const sameDay = m.observation_date === snapshot.data.date;
+    const fields = { ...(sameDay ? m.valuation : {}), turnover_amount: sameDay && m.amount != null ? m.amount / 1e4 : null, turnover_rate: sameDay ? m.turnover : null };
+    const checks = checkRow({ name: m.name, fields, halted: false }, ranges, opts);
+    if (relative) {
+      const benchmark = direction.metrics?.benchmark_pct;
+      const value = sameDay && m.ret !== null && benchmark != null ? m.ret - benchmark : null;
+      checks.push({ id: "relative", state: value === null ? "missing" : (relativeMin === null || value >= relativeMin) && (relativeMax === null || value <= relativeMax) ? "met" : "unmet", value, shown: value === null ? "缺少同日个股或基准" : `${value.toFixed(2)} 个百分点` });
+    }
+    return { symbol: m.code, name: m.name, verdict: verdictOf(checks), checks };
+  }).sort((a, b) => a.symbol.localeCompare(b.symbol));
+  const counts: Record<CheckState, number> = { met: 0, unmet: 0, missing: 0 };
+  for (const row of rows) counts[row.verdict]++;
+  return { universe: { id: "direction", label: `${direction.tag} · ${direction.kind === "industry" ? "行业成分" : "事件观察样本"}`, size: rows.length, as_of: snapshot.data.date, source: `观察快照 ${snapshot.id}` },
+    quotes: { source: "该快照东财涨停池；昨日未涨停成员当日行情缺失", fetched_at: snapshot.data.observed_at, cached: true },
+    conditions: [...METRIC_IDS.filter(id => ranges[id]).map(id => ({ id, label: rangeLabel(id, ranges[id]!), source: "观察快照" })),
+      ...(relative ? [{ id: "relative", label: `相对基准涨幅 ${relativeMin ?? "不限"} 至 ${relativeMax ?? "不限"} 个百分点`, source: "所选行业快照的同日个股与上证指数" }] : []),
+      ...(opts.excludeSt ? [{ id: "st", label: "排除 ST / 退市整理", source: "快照证券简称" }] : []),
+      ...(opts.excludeHalted ? [{ id: "halted", label: "排除停牌", source: "无独立停牌证据" }] : [])],
+    rows, counts, generated_at: now.toISOString(), gaps: [...snapshot.data.gaps, "所有指标来自所选观察版本，未提供的估值、停牌或基准信息标缺数据；不使用当前行情回填。"] };
 }

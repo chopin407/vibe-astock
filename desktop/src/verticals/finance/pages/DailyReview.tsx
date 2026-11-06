@@ -16,6 +16,7 @@ import { api, ApiError, type GlobalIndex } from "@/lib/api";
 import { hasLlm, chatStream } from "@/lib/llm";
 import { SaveNoteButton } from "@/components/ui/SaveNoteButton";
 import { ReviewTiersCard } from "@/components/ReviewTiersCard";
+import { MainlinePanel } from "@/components/MainlinePanel";
 import { TIER_PROMPT_RULES, tiersSummary, type ReviewTiersResult } from "@/lib/reviewTiers";
 import { BREADTH_RULE, SPECULATION_RULE, aboveMa, blockOf, parseReview, reviewLines, staleNote, yiText, type ReviewBlockId } from "@/lib/marketReview";
 import { cn } from "@/lib/utils";
@@ -349,6 +350,7 @@ export function DailyReview() {
         </div>
       )}
 
+      {bizDay && <MainlinePanel date={bizDay} mode={ctx?.live ? "intraday" : "close"} />}
       {/* 0. 市场状态一眼看:全是事实与按固定规则算的数,不下判断 */}
       <Section icon={Gauge} title="市场状态" hint="一眼看全:涨跌面 · 量能 · 短线 · 中长线位置 · 杠杆 · 股债收益率">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

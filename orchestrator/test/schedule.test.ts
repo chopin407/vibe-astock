@@ -20,7 +20,7 @@ test("金融定时任务在 API 入口注册,形状合法", () => {
   assert.equal(currentSchedule(), FINANCE_SCHEDULE);
   validateSchedule(FINANCE_SCHEDULE);
   assert.equal(FINANCE_SCHEDULE.timeZone, "Asia/Shanghai");
-  assert.deepEqual(FINANCE_SCHEDULE.jobs.map((j) => [j.id, j.at]), [["shortline_premarket", "09:05"], ["shortline_close_fetch", "15:35"], ["close_digest", "15:40"], ["watch_changes", "16:15"], ["verdict_due", "16:30"]]);
+  assert.deepEqual(FINANCE_SCHEDULE.jobs.map((j) => [j.id, j.at]), [["mainline_close", "15:45"], ["shortline_premarket", "09:05"], ["shortline_close_fetch", "15:35"], ["close_digest", "15:40"], ["watch_changes", "16:15"], ["verdict_due", "16:30"]]);
 });
 
 test("门判定:交易日开、休市关、日期对不上或取不到都算取不到(不当成开市)", () => {

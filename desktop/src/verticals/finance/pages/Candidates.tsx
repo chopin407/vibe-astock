@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Check, Filter, Minus, RefreshCw, SearchX, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -53,6 +53,11 @@ export function candidatesAiContext(data: CandidateResult | null): string {
 }
 
 export function Candidates() {
+  const [params] = useSearchParams();
+  const directionSnapshot = params.get("snapshot_id");
+  const directionId = params.get("direction_id");
+  const [relativeMin, setRelativeMin] = useState("");
+  const [relativeMax, setRelativeMax] = useState("");
   const [form, setForm] = useState<CandidateForm>(() => parseStoredForm(storageGet(FORM_KEY)));
   const [data, setData] = useState<CandidateResult | null>(null);
   const [error, setError] = useState("");
@@ -66,12 +71,19 @@ export function Candidates() {
 
   const run = useCallback(async (refresh: boolean) => {
     const bad = formError(form);
-    if (bad) { setError(bad); return; }
+    const relativeOnly = !!(directionSnapshot && directionId && (relativeMin.trim() || relativeMax.trim()) && bad === "至少设一个条件");
+    if (bad && !relativeOnly) { setError(bad); return; }
     const my = ++seq.current;
     setLoading(true);
     setError("");
     try {
-      const r = await backend.candidates(candidateQuery(form, refresh));
+      const query = new URLSearchParams(candidateQuery(form, refresh));
+      if (directionSnapshot && directionId) {
+        query.set("universe", "direction"); query.set("snapshot_id", directionSnapshot); query.set("direction_id", directionId);
+        if (relativeMin.trim()) query.set("relative_min", relativeMin.trim());
+        if (relativeMax.trim()) query.set("relative_max", relativeMax.trim());
+      }
+      const r = await backend.candidates(query.toString());
       if (my !== seq.current) return;
       setData(r);
       setShownCount(PAGE_SIZE);
@@ -82,7 +94,7 @@ export function Candidates() {
     } finally {
       if (my === seq.current) setLoading(false);
     }
-  }, [form]);
+  }, [form, directionSnapshot, directionId, relativeMin, relativeMax]);
 
   const rows = useMemo(() => (data ? rowsOfTab(data.rows, tab) : []), [data, tab]);
   const shown = rows.slice(0, shownCount);
@@ -104,14 +116,16 @@ export function Candidates() {
         <div className="flex flex-wrap items-end gap-3">
           <label className="space-y-1.5">
             <span className="block text-xs text-muted-foreground">范围</span>
-            <select value={form.universe} onChange={(e) => update({ ...form, universe: e.target.value as UniverseId })}
+            <select disabled={!!(directionSnapshot && directionId)} value={directionSnapshot && directionId ? "direction" : form.universe} onChange={(e) => update({ ...form, universe: e.target.value as UniverseId })}
               className="rounded-lg border border-border bg-background/60 px-3 py-2 text-sm">
+              {directionSnapshot && directionId && <option value="direction">所选方向快照成员</option>}
               {UNIVERSES.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
             </select>
           </label>
           <p className="pb-2 text-[11px] text-muted-foreground">指数成分取自中证 / 国证指数官网的成分文件;自选和持仓只核对 A 股。</p>
         </div>
 
+        {directionSnapshot && directionId && <fieldset><legend className="text-xs">相对基准涨幅（百分点；事件快照缺基准时标缺数据）</legend><div className="mt-2 flex gap-2"><input aria-label="相对涨幅下限" className={INPUT} value={relativeMin} onChange={e => setRelativeMin(e.target.value)} placeholder="下限，不限可留空" /><input aria-label="相对涨幅上限" className={INPUT} value={relativeMax} onChange={e => setRelativeMax(e.target.value)} placeholder="上限，不限可留空" /></div></fieldset>}
         <div className="grid gap-x-5 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
           {METRICS.map((m) => <fieldset key={m.id} className="min-w-0">
             <legend className="mb-1.5 text-xs text-muted-foreground">{m.label}<span className="ml-1 text-muted-foreground/70">({m.unit})</span>{m.hint && <span className="ml-1.5 text-[11px] text-muted-foreground/70">{m.hint}</span>}</legend>

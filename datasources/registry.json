@@ -370,7 +370,10 @@
       "title": "全市场龙虎榜",
       "layer": "3 信号",
       "function": "daily_dragon_tiger",
-      "args": { "trade_date": null, "min_net_buy": null },
+      "args": {
+        "trade_date": null,
+        "min_net_buy": null
+      },
       "mapper": "em_daily_dragon_tiger",
       "endpoint_label": "datacenter/RPT_DAILYBILLBOARD_DETAILSNEW 全市场"
     },
@@ -3820,7 +3823,9 @@
       "function": "build_ladder",
       "mapper": "shortline_ladder_map",
       "endpoint_label": "push2ex 前一交易日涨停池 → previous_ladder",
-      "args": { "date": null },
+      "args": {
+        "date": null
+      },
       "notes": "计算型端点,移植自 Vibe AStock v2.0.0 vr/previous_ladder;date = 盯的那一场(行情日),不给 = 今天(非交易日用最近一个交易日)。不改用其他日期的名单;涨停池为空不当 0 只(东财只留约一个月)。约 1 次东财请求;样本日已收盘,结果不变、长期缓存。界面「盯盘」用它圈昨日梯队,行情和封板状态由界面另取"
     },
     {
@@ -3846,7 +3851,10 @@
       "function": "build_turnover_top",
       "mapper": "shortline_turnover_top_map",
       "endpoint_label": "通达信官网盘后包(全市场日线) → 按成交额排序",
-      "args": { "date": null, "top": 10 },
+      "args": {
+        "date": null,
+        "top": 10
+      },
       "notes": "计算型端点,替代 Vibe AStock v2.0.0 盯盘的「昨日成交前十」(VA 用东财列表接口当天收盘自己存快照,首日只能拿实时榜暂代)。date 缺省 = 最近一个盘后包已发布的交易日(当天 17 点后才有);只算沪深京 A 股号段(B 股、指数、基金、债券不算)。下载约 2.7MB、约 10 秒;已发布的日子结果不变、长期缓存。字段名与 em_turnover_rank 相同"
     },
     {
@@ -3869,7 +3877,9 @@
       "function": "build_bigcaps",
       "mapper": "shortline_bigcaps_map",
       "endpoint_label": "新浪 Market_Center.getHQNodeData hs_a 按 mktcap 降序翻页",
-      "args": { "min_cap_yi": 500 },
+      "args": {
+        "min_cap_yi": 500
+      },
       "cache_max_age_sec": 3600,
       "notes": "计算型端点,替代 Vibe AStock v2.0.0 盯盘的「500 亿大票」池(VA 用东财列表接口,09-22 起成片失败)。只出名单和总市值,价格涨跌由界面另取实时行情。每页 100 只,500 亿约 4 页、20 秒左右;盘中翻页期间排名在变,页边界附近个别票可能漏掉(重复已去掉)。缓存最多 1 小时"
     },
@@ -4512,6 +4522,139 @@
         ]
       },
       "cache_max_age_sec": 15
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "eastmoney+ths+calc",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mainline",
+      "id": "cn_mainline",
+      "title": "主线方向与关联观察股（完整事件样本）",
+      "layer": "8 打板",
+      "module": "mainline",
+      "function": "build",
+      "mapper": "map_result",
+      "endpoint_label": "问财或同花顺涨停揭秘(涨停原因) + push2ex 涨停 / 炸板 / 跌停池 × 当天与前一交易日 → theme_tree",
+      "args": {
+        "date": null,
+        "mode": "close"
+      },
+      "notes": "完整涨停及题材关系，三交易日确定性观察；逐维度缺值，非全市场行业趋势。盘中仅抓取时刻，不能严格确认。"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "tdx-lan+tencent+calc",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "industry_observation",
+      "id": "cn_industry_catalog",
+      "title": "TDX完整行业目录与指数扫描",
+      "layer": "8 打板",
+      "module": "industry_observation",
+      "function": "catalog",
+      "mapper": "map_catalog",
+      "endpoint_label": "cn_industry_catalog",
+      "args": {
+        "scan": false
+      },
+      "notes": "受控方向补充；保留全量输入，未核实数据不参与计算"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "tdx-lan+tencent+calc",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "industry_observation",
+      "id": "cn_industry_observation",
+      "title": "行业完整成分广度与指数持续性",
+      "layer": "8 打板",
+      "module": "industry_observation",
+      "function": "observe",
+      "mapper": "map_observation",
+      "endpoint_label": "cn_industry_observation",
+      "args": {
+        "industry_id": "T0101",
+        "date": null,
+        "mode": "close"
+      },
+      "notes": "受控方向补充；保留全量输入，未核实数据不参与计算"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "mx",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mx_supplement",
+      "id": "mx_direction_data",
+      "title": "妙想方向关系结构化补充",
+      "layer": "8 打板",
+      "module": "mx_supplement",
+      "function": "data",
+      "mapper": "map_result",
+      "endpoint_label": "mx_direction_data",
+      "args": {
+        "topic": "半导体",
+        "date": null,
+        "codes": []
+      },
+      "notes": "受控方向补充；保留全量输入，未核实数据不参与计算",
+      "auth_env": "MX_APIKEY"
+    },
+    {
+      "market": [
+        "CN"
+      ],
+      "source": "mx",
+      "compliance": "cn-public",
+      "symbol_kind": "none",
+      "symbol_param": "code",
+      "stages": {},
+      "enabled": true,
+      "computed": true,
+      "libs": [],
+      "mapper_module": "mx_supplement",
+      "id": "mx_direction_news",
+      "title": "妙想方向事件检索补充",
+      "layer": "8 打板",
+      "module": "mx_supplement",
+      "function": "news",
+      "mapper": "map_result",
+      "endpoint_label": "mx_direction_news",
+      "args": {
+        "topic": "半导体",
+        "date": null
+      },
+      "notes": "受控方向补充；保留全量输入，未核实数据不参与计算",
+      "auth_env": "MX_APIKEY"
     }
   ]
 }

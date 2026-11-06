@@ -4,14 +4,14 @@
 
 <p align="center">
   <b>A 股短线复盘与跟踪工作台</b><br>
-  盯盘 · 情绪复盘 · AI 复盘 · 明日验证 · 交易日志 · 个股深挖 · 回测 · 183 个数据端点
+  盯盘 · 情绪复盘 · AI 复盘 · 明日验证 · 交易日志 · 个股深挖 · 回测 · 188 个数据端点
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
   <a href="CHANGELOG.md"><img alt="源码版本 v2.1.5" src="https://img.shields.io/badge/source-v2.1.5-F35D2B"></a>
   <img alt="A 股短线" src="https://img.shields.io/badge/market-A%20%E8%82%A1-c92a2a">
-  <img alt="183 个数据端点" src="https://img.shields.io/badge/data-183%20endpoints-2f9e44">
+  <img alt="188 个数据端点" src="https://img.shields.io/badge/data-188%20endpoints-2f9e44">
   <img alt="AI：Claude Code、Codex、WorkBuddy 或模型 API" src="https://img.shields.io/badge/AI-Claude%20Code%20%7C%20Codex%20%7C%20WorkBuddy%20%7C%20API-black">
 </p>
 
@@ -37,7 +37,7 @@ v2.0.0 起和 [Vibe Research](https://github.com/simonlin1212/Vibe-Research) 用
 - **盯盘**：持仓、自选、昨日梯队、大票和成交额前十的当下读数，3 分钟涨跌超 1.5% 记急拉 / 急跌，碰到或离开涨停价记封板 / 开板；昨日涨停股 09:25 的竞价强弱，和全天六个时点的情绪路径。
 - **情绪复盘**：赚钱效应、晋级率、连板天梯、连板溢价、梯队断层、情绪周期、封板质量、题材事件树、首板名单、近 5 天题材轮动；AI 复盘与 AI 周报、明日验证（头天晚上写条件，第二天收盘自动对账）、涨停样本统计、结构变化。
 - **交易日志**：每笔交易自动对上入场那天的情绪强中弱和当时板位，按情绪环境、板位、打法、是否按计划分组看胜率；风险与纪律、复查、模式卡。只存在本机，不发给 AI。
-- **183 个数据端点**（35 层），其中 14 个是短线专用：情绪读数、六张事实表、连板天梯、题材事件树、题材轮动、首板名单、涨停结构、盘中情绪、昨日梯队等；另有行情、K 线、逐笔、财务、一致预期、公告、研报、资金、龙虎榜、限售解禁、可转债、期货与大宗、港美股、新闻、宏观等。
+- **188 个数据端点**（35 层），其中 14 个是短线专用：情绪读数、六张事实表、连板天梯、题材事件树、题材轮动、首板名单、涨停结构、盘中情绪、昨日梯队等；另有行情、K 线、逐笔、财务、一致预期、公告、研报、资金、龙虎榜、限售解禁、可转债、期货与大宗、港美股、新闻、宏观等。
 - **六阶段个股研究（A 股、港股、美股）**：公司画像 → 财务 → 盈利预期 → 估值 → 风险 → 报告，原始数据保留来源，派生数字保留计算过程。
 - **AI 用自己的**：Claude Code、Codex、WorkBuddy 订阅，或 DeepSeek、通义千问、Kimi、MiMo 等任意兼容 Chat Completions 的模型 API。
 - **Windows、macOS、Linux 都能运行**；也可以装在 macOS / Linux 云端电脑上，用带访问口令的链接远程打开。
@@ -325,7 +325,7 @@ A 股最多查 30 只，持有的优先。某个来源没取到会列在「没�
 
 ## 数据与市场
 
-数据注册表共 **183 个端点、35 层**，其中 14 个是短线专用（`cn_shortline_*`）：情绪四项、情绪周期、每日读数、六张事实表、连板天梯、题材事件树、近 5 天题材轮动、首板名单、昨日涨停股当日表现、涨停结构、盘中情绪、昨日梯队、成交额前十、大市值股；已收盘的日子长期缓存，没收盘的一天标「部分」、不缓存。SEC 的 7 个端点要先在「接入 AI」页填 SEC 联系方式（或设环境变量 `VRA_SEC_CONTACT`），没填时会说明缺这一项。其余类别包括行情、K 线、逐笔、财务、一致预期、公告、研报、资金、筹码、南向资金、AH 溢价、公司资料、期权、指数、期货与大宗、事件驱动、可转债、SEC / FINRA / CBOE、新闻、宏观、产业温度计、招聘、管制与数据日历。A 股数据同步到 [a-stock-data](https://github.com/simonlin1212/a-stock-data) v3.10.1，美股 / 港股数据同步到 [global-stock-data](https://github.com/simonlin1212/global-stock-data) v2.0.3。
+数据注册表共 **188 个端点、35 层**，其中 14 个是短线专用（`cn_shortline_*`）：情绪四项、情绪周期、每日读数、六张事实表、连板天梯、题材事件树、近 5 天题材轮动、首板名单、昨日涨停股当日表现、涨停结构、盘中情绪、昨日梯队、成交额前十、大市值股；已收盘的日子长期缓存，没收盘的一天标「部分」、不缓存。SEC 的 7 个端点要先在「接入 AI」页填 SEC 联系方式（或设环境变量 `VRA_SEC_CONTACT`），没填时会说明缺这一项。其余类别包括行情、K 线、逐笔、财务、一致预期、公告、研报、资金、筹码、南向资金、AH 溢价、公司资料、期权、指数、期货与大宗、事件驱动、可转债、SEC / FINRA / CBOE、新闻、宏观、产业温度计、招聘、管制与数据日历。A 股数据同步到 [a-stock-data](https://github.com/simonlin1212/a-stock-data) v3.10.1，美股 / 港股数据同步到 [global-stock-data](https://github.com/simonlin1212/global-stock-data) v2.0.3。
 
 | | A 股 | 美股 | 港股 |
 |---|---|---|---|
@@ -566,7 +566,7 @@ Cursor：在 `~/.cursor/mcp.json`（只给某个项目用就放项目里的 `.cu
         │
         ▼
 投研层
-183 个数据端点 · 短线读数与对账 · 六阶段研究流程 · calc · validator · 报告归档
+188 个数据端点 · 短线读数与对账 · 六阶段研究流程 · calc · validator · 报告归档
         │
         ▼
 本地 Agent 运行时（Local Agent Runtime）与模型供应商（Model Provider）
@@ -753,3 +753,5 @@ TDX 不提供这里所需的完整历史涨停池，情绪计算继续使用东�
 每日复盘的主要指数与沪深成交额：配置 TDX 后先以 `GET /` 检查服务，优先读取 `GET /index/day`（指数不复权、价格和成交额按协议除以 1000）。单条失败独立回退腾讯/东财，成交额再以 baostock 兜底；健康检查失败时本轮跳过 TDX，避免重复等待。沿用 dashboard 的 TDX 协议适配方式，不依赖 dashboard 的运行或私有数据库。历史复盘仍按业务日截断，来源记录在证据中。
 
 统一取数配置、源优先级、缓存规则和只读检查命令见 [数据获取服务](docs/data-service.md)。
+
+主线方向与关联观察股支持事件题材、TDX行业指数扫描与分类表全成员观察、相对强弱候选核对、妙想数据/资讯补充，以及独立方向验证。在每日复盘、盯盘页生成观察，保留成员、状态、历史快照和证据，可跳转个股研究。连续交易时可选每分钟更新，达到时间/覆盖要求后核验双时点持续性；收盘任务在15:45保存事件观察并发送摘要（需本机服务运行）。操作、已验收范围与数据边界见[功能说明](docs/mainline-feature.md)，方法见[总体设计](docs/mainline-discovery-design.md)。
