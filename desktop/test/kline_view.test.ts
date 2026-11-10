@@ -83,7 +83,26 @@ test("均线按窗口从小到大，热身期是空位不连线", () => {
   assert.deepEqual(ma.map((s: Obj) => s.name), ["MA5", "MA20"]);
   assert.equal(ma[0].data[0], "-");
   assert.equal(ma[0].data[4], 12);
-  assert.deepEqual(o.legend.data, ["MA5", "MA20"]);
+  assert.deepEqual(o.legend[0].data, ["MA5", "MA20"]);
+});
+
+test("5、10 周期均量线使用成交量坐标，悬停显示均量", () => {
+  const input = toolResult(11);
+  Object.assign(input.result.ui_only.series, { volume_ma: {
+    "5": [null, null, null, null, 3000, 4000, 5000, 6000, 7000, 8000, 9000],
+    "10": [...Array(9).fill(null), 5500, 6500],
+  } });
+  const r = parseKline(input);
+  assert.ok(r.ok);
+  const option = klineOption(r.view, P) as Obj;
+  const lines = option.series.filter((s: Obj) => s.name.startsWith("均量"));
+  assert.deepEqual(option.legend[1].data, ["均量5", "均量10"]);
+  assert.deepEqual(lines.map((s: Obj) => [s.type, s.xAxisIndex, s.yAxisIndex]), [["line", 1, 1], ["line", 1, 1]]);
+  assert.equal(lines[1].data[8], "-");
+  assert.equal(lines[1].data[9], 5500);
+  const tooltip = option.tooltip.formatter([{ dataIndex: 10 }]);
+  assert.match(tooltip, /均量5.*9000 股/);
+  assert.match(tooltip, /均量10.*6500 股/);
 });
 
 test("成交量单位确认不了就不画量图，只剩一个价格区", () => {

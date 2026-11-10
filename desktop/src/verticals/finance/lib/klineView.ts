@@ -15,6 +15,7 @@ export interface KlineSeries {
   volume: Num[];
   change: Num[];
   ma: Record<string, Num[]>;
+  volumeMa: Partial<Record<"5" | "10", Num[]>>;
 }
 
 export interface KlineView {
@@ -60,6 +61,13 @@ export function parseKline(toolResult: unknown): KlineResult {
   const col = Object.fromEntries(cols) as Record<(typeof cols)[number][0], Num[]>;
   const ma: Record<string, Num[]> = {};
   if (obj(s.ma)) for (const [k, v] of Object.entries(s.ma)) { const a = numArr(v, n); if (a && /^\d+$/.test(k)) ma[k] = a; }
+  const volumeMa: KlineSeries["volumeMa"] = {};
+  if (obj(s.volume_ma)) {
+    for (const k of ["5", "10"] as const) {
+      const values = numArr(s.volume_ma[k], n);
+      if (values) volumeMa[k] = values;
+    }
+  }
   return {
     ok: true,
     view: {
@@ -77,7 +85,7 @@ export function parseKline(toolResult: unknown): KlineResult {
       first: s.dates[0] as string,
       last: s.dates[n - 1] as string,
       notes: Array.isArray(r.notes) ? r.notes.filter((x): x is string => typeof x === "string") : [],
-      series: { dates: s.dates as string[], ...col, ma },
+      series: { dates: s.dates as string[], ...col, ma, volumeMa },
     },
   };
 }
@@ -114,6 +122,7 @@ export const VISIBLE_BARS: Record<string, number> = { day: 120, week: 104, month
 
 /** 均线颜色：避开红绿（那是涨跌的颜色），亮暗两种底色上都看得清。 */
 const MA_COLORS = ["#8b8f98", "#d4a017", "#a855f7", "#3b82f6"];
+const VOLUME_MA = [{ key: "5", color: "#d4a017" }, { key: "10", color: "#3b82f6" }] as const;
 
 const escape = (x: string) => x.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -125,6 +134,10 @@ export function klineOption(v: KlineView, p: ChartPalette): Obj {
   const axisLabel = { color: p.text, fontSize: 11 };
   const maKeys = Object.keys(s.ma).sort((a, b) => Number(a) - Number(b));
   const hasVolume = v.volumeUnit !== null && s.volume.some((x) => x !== null);
+  const volumeAverages = VOLUME_MA.flatMap(({ key, color }) => {
+    const data = s.volumeMa[key];
+    return hasVolume && data?.some((x) => x !== null) ? [{ name: `均量${key}`, color, data }] : [];
+  });
   const candles = s.dates.map((_, i) => [s.open[i], s.close[i], s.low[i], s.high[i]].map((x) => x ?? "-"));
   const series: Obj[] = [
     {
@@ -140,6 +153,12 @@ export function klineOption(v: KlineView, p: ChartPalette): Obj {
     name: "成交量", type: "bar", xAxisIndex: 1, yAxisIndex: 1, barMaxWidth: 14,
     data: s.volume.map((x, i) => ({ value: x ?? "-", itemStyle: { color: barRises(s, i) ? p.rise : p.fall, opacity: 0.7 } })),
   });
+  for (const { name, color, data } of volumeAverages) {
+    series.push({
+      name, type: "line", xAxisIndex: 1, yAxisIndex: 1, data: data.map((x) => x ?? "-"),
+      showSymbol: false, connectNulls: false, lineStyle: { width: 1.5, color }, itemStyle: { color },
+    });
+  }
 
   const tooltipFormatter = (params: unknown) => {
     const first = Array.isArray(params) ? params[0] : params;
@@ -154,13 +173,18 @@ export function klineOption(v: KlineView, p: ChartPalette): Obj {
       row("最低", fmtPrice(s.low[i] ?? null)), row("收盘", fmtPrice(s.close[i] ?? null), tone),
       row("涨跌幅", fmtChange(s.change[i] ?? null), tone),
       ...(hasVolume ? [row("成交量", `${fmtVolume(s.volume[i] ?? null)} ${escape(v.volumeUnit ?? "")}`)] : []),
+      ...volumeAverages.map(({ name, color, data }) => row(name, `${fmtVolume(data[i] ?? null)} ${escape(v.volumeUnit ?? "")}`, color)),
       ...maKeys.map((k) => row(`MA${k}`, fmtPrice(s.ma[k]![i] ?? null))),
     ].join("");
   };
 
   return {
     animation: false,
-    legend: { top: 0, left: 0, itemWidth: 14, itemHeight: 2, textStyle: { color: p.text, fontSize: 11 }, data: maKeys.map((k) => `MA${k}`) },
+    legend: [
+      { top: 0, left: 0, itemWidth: 14, itemHeight: 2, textStyle: { color: p.text, fontSize: 11 }, data: maKeys.map((k) => `MA${k}`) },
+      ...(volumeAverages.length ? [{ top: "67%", left: 60, itemWidth: 14, itemHeight: 2, textStyle: { color: p.text, fontSize: 11 },
+        data: volumeAverages.map(({ name }) => name) }] : []),
+    ],
     axisPointer: { link: [{ xAxisIndex: "all" }], label: { backgroundColor: p.tooltipBg, color: p.tooltipText } },
     tooltip: {
       trigger: "axis", axisPointer: { type: "cross" }, formatter: tooltipFormatter,

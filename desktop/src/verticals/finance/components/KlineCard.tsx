@@ -90,7 +90,7 @@ export function KlineCard({ symbol, title, action }: { symbol: string; title?: s
             <p>
               来源：{view.source}{view.fetchedAt ? ` · 取数 ${view.fetchedAt.slice(0, 16).replace("T", " ")}` : ""} ·
               {" "}{view.periodLabel} {view.bars} 根（{view.first} 至 {view.last}），默认显示最近一段，拖动下方滑条或图表看更早，按住 Ctrl 滚轮（或双指捏合）缩放。
-              均线是收盘价的简单移动平均。
+              价格均线按收盘价计算，均量线按当前周期的成交量计算。
             </p>
           </div>
         </>

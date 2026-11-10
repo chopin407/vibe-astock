@@ -15,6 +15,54 @@ sys.path.insert(0, ROOT)
 from backtest import kline as K  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def no_live_tdx(monkeypatch):
+    monkeypatch.setattr(K.tdx_lan, "settings", lambda: {"base_url": ""})
+
+
+@pytest.mark.parametrize("adjust,route", [("qfq", "/kline/day/qfq/all"), ("hfq", "/kline/day/hfq/all"), ("none", "/kline/day/all")])
+@pytest.mark.parametrize("period", ["day", "week", "month"])
+def test_local_tdx_supplies_chart_before_public_sources(monkeypatch, tmp_path, adjust, route, period):
+    monkeypatch.setattr(K.tdx_lan, "settings", lambda: {"base_url": "http://tdx.test"})
+    monkeypatch.setattr(K.tdx_lan, "available", lambda: True)
+    monkeypatch.setattr(K, "_market_today", lambda market: date(2026, 11, 10))
+    monkeypatch.setattr(K, "_run_fetch", lambda *args: pytest.fail("TDX 成功时不应请求备用来源"))
+    calls = []
+
+    def get(path, **kwargs):
+        calls.append((path, kwargs["code"]))
+        return {"List": [
+            {"Time": "2026-11-03T15:00:00+08:00", "Open": 10000, "High": 14000, "Low": 9000, "Close": 12000, "Volume": 20},
+            {"Time": "2026-10-30T15:00:00+08:00", "Open": 8000, "High": 9000, "Low": 7000, "Close": 8000, "Volume": 5},
+            {"Time": "2026-11-02T15:00:00+08:00", "Open": 8000, "High": 11000, "Low": 7500, "Close": 10000, "Volume": 10},
+        ]}
+
+    monkeypatch.setattr(K.tdx_lan, "request", get)
+    got = K.build({"symbol": "002332", "period": period, "adjust": adjust, "charts": True}, tmp_path)
+    assert calls == [(route, "sz002332")]
+    assert got["source"] == "局域网 TDX" and got["adjust"] == adjust
+    assert got["last"] == "2026-11-03" and got["volume_unit"] == "股"
+    if period == "day":
+        assert got["bars"] == 3 and got["latest"]["volume"] == 2000
+    else:
+        assert got["bars"] == 2
+        assert {k: got["latest"][k] for k in ("open", "high", "low", "close", "volume")} == {
+            "open": 8, "high": 14, "low": 7.5, "close": 12, "volume": 3000,
+        }
+
+
+def test_invalid_local_tdx_data_uses_labeled_fallback(monkeypatch, tmp_path):
+    monkeypatch.setattr(K.tdx_lan, "settings", lambda: {"base_url": "http://tdx.test"})
+    monkeypatch.setattr(K.tdx_lan, "available", lambda: True)
+    monkeypatch.setattr(K.tdx_lan, "request", lambda *args, **kwargs: {"List": [{"Time": "not a date"}]})
+    calls = []
+    monkeypatch.setattr(K, "_run_fetch", _fake_fetch(calls))
+    got = K.build({"symbol": "600519", "adjust": "qfq"}, tmp_path)
+    assert [c[0] for c in calls] == ["tx_kline", "sina_adjust_factor"]
+    assert "新浪复权因子" in got["source"] and "等比" in got["adjust_label"]
+    assert any("本次使用备用来源" in note for note in got["notes"])
+
+
 def _days(n, start=date(2025, 12, 1)):
     out, d = [], start
     while len(out) < n:
@@ -82,13 +130,18 @@ def test_unknown_volume_unit_draws_no_volume(monkeypatch, tmp_path):
 
 
 def test_moving_averages_and_change(monkeypatch, tmp_path):
-    monkeypatch.setattr(K, "_run_fetch", _fake_fetch([]))
+    rows = _tx_rows()
+    rows[5]["volume"] = None
+    monkeypatch.setattr(K, "_run_fetch", _fake_fetch([], rows=rows))
     r = K.build({"symbol": "600519", "adjust": "none", "charts": True}, tmp_path)
     s = r["ui_only"]["series"]
     assert s["ma"]["5"][:4] == [None] * 4, "不够 5 根的位置是空，不拿更短的窗口凑"
     assert s["ma"]["5"][4] == pytest.approx(103.0)
     assert s["ma"]["60"][58] is None and s["ma"]["60"][59] == pytest.approx(101.0 + 29.5)
     assert s["change"][0] is None and s["change"][1] == pytest.approx(102 / 101 - 1, abs=1e-6)
+    assert s["volume_ma"]["5"][:5] == [None, None, None, None, 100_200]
+    assert s["volume_ma"]["5"][5:11] == [None, None, None, None, None, 100_800]
+    assert s["volume_ma"]["10"][:16] == [None] * 15 + [101_050]
     assert r["latest"]["close"] == s["close"][-1] and r["ma_latest"]["5"] == s["ma"]["5"][-1]
     assert r["window_high"] == {"value": s["high"][-1], "date": s["dates"][-1]}
     assert r["window_low"] == {"value": s["low"][0], "date": s["dates"][0]}

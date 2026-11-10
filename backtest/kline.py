@@ -1,14 +1,8 @@
 """个股 K 线的 **JSON 入口**：stdin 进 ``{symbol, period, adjust}``，stdout 出整段 K 线和均线。
 
-给个股研究页画图用，不需要模型。取数仍走本产品的注册表端点（腾讯 K 线 / 新浪复权因子 / Yahoo chart），
-代码规整、市场判定、同一只票的核对都复用 ``loader.py``，不另写一套。
-
-🔴 A 股复权用**新浪复权因子等比换算**，不用腾讯自带的 qfq：腾讯的前复权是逐次减去每股分红的等差口径，
-   高分红股的早年价格会被减成负数（茅台 2015 年 -117.6），周线 / 月线一拉长就取不到；
-   不为负时涨跌幅也被放大（茅台 2020 年初原始 1130、等差前复权 870.7）。
-   ⇒ 取腾讯不复权价，再用新浪因子换算，换算公式就是取数层的 ``apply_adjust``，只有一份。
-🔴 成交量统一成「股」。腾讯 K 线科创板给股、其余给手 —— 按信封里证据写的单位换算，不按号段猜。
-🔴 北交所明说画不了：腾讯只给最新 1 根，baostock 不支持北交所，不拿一张空图冒充。
+给个股研究页画图用，不需要模型。A 股优先用局域网 TDX 的日线，周线和月线由同口径日线聚合。
+沪深备用路径取腾讯原始 K 线，按新浪因子等比复权，换算复用取数层的 ``apply_adjust``。
+港美股走 Yahoo chart。代码规整、市场判定和备用源的证券核对复用 ``loader.py``。
 🔴 只画 K 线、均线、成交量。不出买卖点、信号或任何「该不该买」的标记。
 
 用法::
@@ -23,6 +17,7 @@ import math
 import sys
 import tempfile
 from datetime import date, datetime, timedelta
+from itertools import groupby
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
@@ -35,11 +30,14 @@ from backtest.loader import (
 from backtest.stdio_utf8 import force_utf8_stdio
 
 sys.path.insert(0, str(REPO_ROOT / ".agents" / "skills" / "data-access" / "scripts"))
+from data_service import settings as data_service_settings  # noqa: E402
+from sources import tdx_lan  # noqa: E402
 from sources.sina import apply_adjust, parse_adjust_factor_js  # noqa: E402
 
 PERIODS = {"day": "日线", "week": "周线", "month": "月线"}
 ADJUSTS = {"qfq": "前复权", "hfq": "后复权", "none": "不复权"}
 MA_WINDOWS = (5, 10, 20, 60)
+VOLUME_MA_WINDOWS = (5, 10)
 MARKET_LABELS = {"a_share": "A 股", "us_equity": "美股", "hk_equity": "港股"}
 #: 各周期取多长。日线 5 年约 1200 根，界面默认只显示最近一段，其余拖动查看
 A_SHARE_DAY_SPAN_DAYS = 365 * 5 + 2
@@ -48,6 +46,8 @@ A_SHARE_FIRST_DAY = "1990-12-01"
 YAHOO = {"day": ("1d", "5y"), "week": ("1wk", "10y"), "month": ("1mo", "max")}
 MARKET_TZ = {"a_share": "Asia/Shanghai", "hk_equity": "Asia/Hong_Kong", "us_equity": "America/New_York"}
 FETCH_TIMEOUT = 60
+TDX_ROUTES = {"qfq": "/kline/day/qfq/all", "hfq": "/kline/day/hfq/all", "none": "/kline/day/all"}
+TDX_CHART_TIMEOUT = 25
 
 
 class KlineError(ValueError):
@@ -78,7 +78,70 @@ def _market_today(market: str) -> date:
     return datetime.now(ZoneInfo(MARKET_TZ[market])).date()
 
 
-def _a_share(code: str, period: str, adjust: str, out_dir: Path) -> Dict[str, Any]:
+def _tdx_a_share(code: str, period: str, adjust: str, out_dir: Path) -> Dict[str, Any]:
+    if not tdx_lan.available():
+        raise KlineError("局域网 TDX 未就绪")
+    six, ex = code.split(".")
+    route = TDX_ROUTES[adjust]
+    timeout = min(TDX_CHART_TIMEOUT, data_service_settings()["tdx_kline_timeout_sec"])
+    payload = tdx_lan.request(route, code=ex.lower() + six, _out_dir=str(out_dir), _timeout=timeout)
+    items = payload.get("List") if isinstance(payload, dict) else None
+    if not isinstance(items, list) or not items:
+        raise KlineError("TDX 日线为空")
+
+    today = _market_today("a_share")
+    by_date: Dict[str, Dict[str, Any]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            raise KlineError("TDX 日线格式无效")
+        day = date.fromisoformat(str(item.get("Time", ""))[:10])
+        if day > today:
+            raise KlineError("TDX 日线含未来日期")
+        stamp = day.isoformat()
+        if stamp in by_date:
+            raise KlineError("TDX 日线日期重复")
+        prices = {key.lower(): tdx_lan.number(item, key, 1000) for key in ("Open", "High", "Low", "Close")}
+        o, h, l, c = (prices[k] for k in ("open", "high", "low", "close"))
+        if o is None or h is None or l is None or c is None or not (l <= min(o, c) <= max(o, c) <= h):
+            raise KlineError("TDX 日线开高低收无效")
+        volume = tdx_lan.number(item, "Volume")
+        by_date[stamp] = {"date": stamp, **prices, "volume": volume if volume is not None and volume >= 0 else None}
+
+    rows = [by_date[d] for d in sorted(by_date)]
+    notes: List[str] = []
+    if period != "day":
+        def bucket(row: Dict[str, Any]) -> tuple[int, int]:
+            day = date.fromisoformat(row["date"])
+            iso = day.isocalendar()
+            return (iso.year, iso.week) if period == "week" else (day.year, day.month)
+
+        grouped = []
+        for _, group in groupby(rows, key=bucket):
+            bars = list(group)
+            volumes = [b["volume"] for b in bars]
+            grouped.append({"date": bars[-1]["date"], "open": bars[0]["open"], "close": bars[-1]["close"],
+                            "high": max(b["high"] for b in bars), "low": min(b["low"] for b in bars),
+                            "volume": sum(volumes) if all(v is not None for v in volumes) else None})
+        rows = grouped
+        notes.append("由同口径日线聚合，日期为该周期内最后一个有数据的交易日")
+
+    span = A_SHARE_SPAN_DAYS[period]
+    if span:
+        start = (today - timedelta(days=span)).isoformat()
+        rows = [row for row in rows if row["date"] >= start]
+    if not rows:
+        raise KlineError("TDX 在所选区间内没有日线")
+    if any(row["low"] <= 0 for row in rows):
+        notes.append("本区间含非正价格，请结合复权口径解读")
+    # TDX 股票日线的成交量为手，可转债的成交量口径不同。
+    volume_scale = 100 if not six.startswith(("11", "12")) else None
+    adjust_label = ADJUSTS[adjust] if adjust == "none" else f"{ADJUSTS[adjust]}（通达信仿射复权）"
+    return {"rows": rows, "volume_scale": volume_scale, "source": "局域网 TDX", "endpoint": route,
+            "fetched_at": datetime.now(ZoneInfo(MARKET_TZ["a_share"])).isoformat(), "adjust_label": adjust_label,
+            "adjust": adjust, "notes": notes}
+
+
+def _a_share_fallback(code: str, period: str, adjust: str, out_dir: Path) -> Dict[str, Any]:
     six, ex = bare(code), code.split(".")[-1]
     if ex == "BJ":
         raise KlineError("北交所暂时画不了 K 线：腾讯 K 线对北交所只返回最新一根，baostock 也不提供北交所")
@@ -137,6 +200,25 @@ def _a_share(code: str, period: str, adjust: str, out_dir: Path) -> Dict[str, An
     return {"rows": rows, "volume_scale": scale, "source": "腾讯 K 线" + ("、新浪复权因子" if adjusted else ""),
             "endpoint": "tx_kline", "fetched_at": env.get("fetched_at"), "adjust_label": adjust_label,
             "adjust": adjust if adjusted else "none", "notes": notes}
+
+
+def _a_share(code: str, period: str, adjust: str, out_dir: Path) -> Dict[str, Any]:
+    tdx_failed = False
+    try:
+        if tdx_lan.settings()["base_url"]:
+            return _tdx_a_share(code, period, adjust, out_dir)
+    except (ValueError, TypeError, OverflowError, RuntimeError, OSError):
+        tdx_failed = True
+
+    try:
+        result = _a_share_fallback(code, period, adjust, out_dir)
+    except (KlineError, LoaderError) as exc:
+        if tdx_failed:
+            raise KlineError(f"局域网 TDX 未取得有效 K 线。备用来源：{exc}") from exc
+        raise
+    if tdx_failed:
+        result["notes"].append("局域网 TDX 未取得有效 K 线，本次使用备用来源")
+    return result
 
 
 def _yahoo(code: str, market: str, period: str, adjust: str, out_dir: Path) -> Dict[str, Any]:
@@ -228,13 +310,15 @@ def build(req: Dict[str, Any], out_dir: Path) -> Dict[str, Any]:
     }
     if req.get("charts") is True:
         # 整段序列只给界面画图；Agent 那条路不带（上千根 K 线对写报告没用，还会挤占上下文）
+        volume = pd.Series(series["volume"], dtype="float64")
+        series["volume_ma"] = {str(n): [_num(v) for v in volume.rolling(n).mean()] for n in VOLUME_MA_WINDOWS}
         result["ui_only"] = {"series": series}
     return result
 
 
 CATALOG = {
-    "description": "个股 K 线 + 收盘价均线（5/10/20/60）+ 成交量。A 股走腾讯不复权价再按新浪复权因子等比换算；"
-                   "港美股走 Yahoo（拆股已调整、不含分红）。不支持北交所。只给行情，不给买卖点。",
+    "description": "个股 K 线、收盘价均线（5/10/20/60）和成交量。A 股优先使用局域网 TDX，沪深备用源为腾讯和新浪。"
+                   "北交所依赖局域网 TDX。港美股走 Yahoo（拆股已调整、不含分红）。",
     "parameters": {
         "symbol": "600519 / 600519.SH / AAPL / 00700.HK",
         "period": "day（近 5 年）/ week（近 10 年）/ month（全部）",
